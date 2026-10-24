@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">CBL</string>
+    <string name="press_back_again">Press Back again to exit</string>
+    <string name="no_link_handler">No app is available to open this link</string>
+</resources>

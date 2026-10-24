@@ -1,0 +1,7 @@
+# Changelog
+
+The release workflow adds one entry for each release.
+
+## 1.0.0 — 2026-10-24
+
+- Add the Chrome extension and the Android app

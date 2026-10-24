@@ -1,0 +1,228 @@
+/* Rarity foil (holo.js, foil.js): every face-up card on the board and in the card view shows
+   the finish of its printed rarity. Light, tilt, masks
+   and textures come from foil.js's own stylesheet rules; the defaults here are the resting
+   lamp. Each lit face holds one .cbl-holo box whose layers sit on its art, blend with it and
+   stay below everything the site and the card info overlay draw on the card:
+   .cbl-holo-field  holo surface, masked to the print's foil-bearing areas
+   .cbl-holo-line   metallic line art / frame elements (+ and ++ prints)
+   .cbl-holo-glare  the gloss coating's specular highlight (every card)
+
+   Finishes observed on real cards (pack footage and official scans):
+   C/U   matte stock; only the gloss highlight.
+   R/LR  textured holo: a fine frosted grain carrying spectral bands that sweep with the
+         tilt on light areas; dark ink stays dark; LR adds glints and a strong white hotspot
+         at grazing angles.
+   +     dense multicolour pinpoint glitter over the art; silver numerals, name, tab and
+         frame lines flash rainbow metal (densest on LR+).
+   ++    pastel art over a fine mosaic-cell holo; the gold line art, logo, frame lines and
+         tab turn into vivid rainbow metal.
+   P     promo textured holo with glints. */
+:where([data-cbl-holo]) {
+  --cbl-holo-x: 50%; --cbl-holo-y: 30%; --cbl-holo-fx: .5; --cbl-holo-fy: .3; --cbl-holo-c: .4; --cbl-holo-o: 0;
+  --cbl-holo-rx: 0deg; --cbl-holo-ry: 0deg; --cbl-holo-sweep-o: 0; --cbl-holo-arrive: 1;
+  --cbl-holo-mask-field: none; --cbl-holo-mask-line: none; --cbl-holo-mask-size: 100% 100%; --cbl-holo-mask-position: 50% 50%;
+  /* Texture scale (tiles and parallax at 155 px faces) and perspective, per card. */
+  --cbl-holo-k: 1; --cbl-holo-p: 560px;
+  /* Colour pools around the light and curves away from it, as diffraction foil does under
+     a lamp; bands are wide and soft, never straight stripes. */
+  --cbl-holo-spectrum: repeating-radial-gradient(ellipse 150% 115% at var(--cbl-holo-x) var(--cbl-holo-y), hsl(195,90%,62%) 0%, hsl(250,85%,68%) 9%, hsl(320,85%,66%) 18%, hsl(30,90%,62%) 27%, hsl(70,85%,60%) 36%, hsl(150,80%,58%) 45%, hsl(195,90%,62%) 54%);
+  --cbl-holo-fine: repeating-radial-gradient(ellipse 140% 110% at var(--cbl-holo-x) var(--cbl-holo-y), hsl(0,78%,58%) 0%, hsl(48,80%,56%) 3.5%, hsl(110,66%,50%) 7%, hsl(178,76%,50%) 10.5%, hsl(222,80%,62%) 14%, hsl(285,72%,62%) 17.5%, hsl(360,78%,58%) 21%);
+  --cbl-holo-near: .55; --cbl-holo-far: .22;
+  --cbl-holo-rest: .25; --cbl-holo-active: .85; --cbl-holo-line-rest: .45; --cbl-holo-line-active: .82;
+  --cbl-holo-gloss: .42; --cbl-holo-graze: .6; --cbl-holo-tint: 0,0%,100%;
+  --cbl-holo-glitter-a: 0; --cbl-holo-glitter-b: 0; --cbl-holo-glint: 0;
+}
+/* The context multiplier: the room (the showcase's lighting switch), art the site or the
+   overlay fades (rested Units, unplayable hand cards) and the armed hand card on touch. */
+[data-cbl-holo] {
+  --cbl-holo-light: calc(var(--cbl-holo-room, 1) * var(--cbl-holo-fade, 1) * var(--cbl-holo-boost, 1));
+  /* Blend modes mix the foil with this card's art only, never with the board behind it. */
+  isolation: isolate;
+}
+.cbl-holo {
+  position: absolute;
+  left: var(--cbl-holo-left, 0); top: var(--cbl-holo-top, 0);
+  width: var(--cbl-holo-width, 100%); height: var(--cbl-holo-height, 100%);
+  /* No z-index, transform or clip here: a box with its own stacking context would blend its
+     layers with nothing and paint the foil over the card as a rainbow veil. */
+  border-radius: var(--cbl-holo-radius, 2px);
+  pointer-events: none;
+}
+.cbl-holo > i {
+  /* Directly on the art (z-index 1, after it), so each layer blends with the print, under
+     the site's stats, badges, reticles and the card info overlay (z-index 15 and up). */
+  position: absolute; inset: 0; z-index: 1; display: block; border-radius: inherit; pointer-events: none;
+  /* Light falloff, evaluated per layer so each layer's near/far applies. */
+  --cbl-holo-light-mask: radial-gradient(farthest-corner ellipse at var(--cbl-holo-x) var(--cbl-holo-y), #000 0%, rgba(0,0,0,var(--cbl-holo-near)) 50%, rgba(0,0,0,var(--cbl-holo-far)) 100%);
+}
+/* Texture and glint boxes of each layer (finishes below set their images). */
+.cbl-holo > i::before,
+.cbl-holo > i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background-repeat: repeat; }
+
+/* Tilt only while the pointer drives the card and it settles. A board or hand card turns
+   whole, its frame, glow, badges and foil with the art, as a real card would; turning only the
+   art inside the site's frame, which clips it, showed that frame as a dark box behind it. The
+   turn is the card's rotate property, which composes with the site's own transforms and keeps
+   their transitions: foil.js folds the site's rotate (upright opponent cards) and its transform's
+   turn (a rested card) into --cbl-holo-turn, and the card's parent lends the perspective while
+   it turns. Its layout box never moves. A paired Unit turns with its Pilot and the card info
+   overlay's badges, all about the stack's centre, since turning the Unit alone showed the
+   Pilot's dark frame behind it; the stack itself never turns (the site reads its rotate as 2D).
+   A hand card the site lifts stops turning at once. The :not() list also lifts the rule's
+   specificity (an id) over the site's own rotate rules (upright opponent cards). */
+@media (prefers-reduced-motion: no-preference) {
+  [data-cbl-holo-turn]:not(.duo-art, #cardDetailV2 *, .cmd-drag-lift, .hand-reorder-drag) { rotate: var(--cbl-holo-turn); }
+  .play-stack > [data-cbl-holo-turn]:not(#cardDetailV2 *) { transform-origin: var(--cbl-holo-origin, 50% 50%); }
+}
+/* The card views turn their art box whole too, with its own perspective (the site gives
+   neither box a transform). The floating view's box has a black background and clips the art,
+   so turning only the art inside it showed that black around the card; its ⋮ button and the
+   site's stat overlay sit on the art and turn with it, while the panel, its tray, drag and
+   resize handles stay put. */
+#cardDetailV2 [data-cbl-holo][data-cbl-holo-tilt],
+.duo-art[data-cbl-holo][data-cbl-holo-tilt] {
+  transform: perspective(var(--cbl-holo-p)) rotateX(var(--cbl-holo-ry)) rotateY(var(--cbl-holo-rx));
+}
+/* With its tray closed, the floating view's panel clips the art to its corners and casts the
+   shadow, which would keep the flat card's outline around a turning one; while the art turns,
+   the panel lets it out and the art casts the shadow, as the site does with the tray open. */
+@media (prefers-reduced-motion: no-preference) {
+  #cardDetailV2.art:not(.cd-tray-open):has(> .big[data-cbl-holo-tilt]) { overflow: visible; box-shadow: none; }
+  #cardDetailV2.art:not(.cd-tray-open) > .big[data-cbl-holo-tilt] { box-shadow: 0 10px 28px rgba(0, 0, 0, .6); }
+}
+#cardDetailV2 [data-cbl-holo] > .cbl-holo { border-radius: inherit; }
+/* The site drags the floating view's whole panel from its art, so foil.js lays a pad over the
+   art that opts out of that drag with the site's own data-cd-no-drag: a press and move on it
+   tilts the card. In art mode the art's bottom-right corner (an invisible grip, so the printed
+   AP and HP stay clear) still moves the panel, as does a press anywhere else on the panel;
+   its buttons and resize handles are unchanged. */
+#cardDetailV2 .cbl-tilt-pad { position: absolute; inset: 0; z-index: 2; border-radius: inherit; touch-action: none; }
+#cardDetailV2 .cbl-move-grip { position: absolute; right: 0; bottom: 0; z-index: 3; width: 38%; height: 24%; touch-action: none; cursor: move; }
+.duo-art[data-cbl-holo] { touch-action: pan-y; }
+.duo-art[data-cbl-holo][data-cbl-holo-active] { box-shadow: 0 18px 36px -10px #000e; }
+.duo-art > .cbl-holo { border-radius: inherit; }
+
+/* Faded art fades its finish too; the armed hand card on touch layouts is a little brighter. */
+.play-area .card.tapped[data-cbl-holo],
+.play-area .play-stack.tapped > [data-cbl-holo] { --cbl-holo-fade: .45; }
+.hand-row[data-hand-player="p1"] > .card.cbl-glow:not(.card-available-action):not(.cmd-drag-lift):not(.lab-targetable):not(.card-action-candidate)[data-cbl-holo] { --cbl-holo-fade: .45; }
+html.loz-arm-mode .hand-row[data-hand-player="p1"] > .card.loz-armed[data-cbl-holo] { --cbl-holo-boost: 1.4; }
+
+/* ---------- shared layer behaviour ---------- */
+.cbl-holo > .cbl-holo-field {
+  /* The arrival sweep rises to the hovered strength around the moving light. */
+  opacity: calc((var(--cbl-holo-rest) + (var(--cbl-holo-active) - var(--cbl-holo-rest)) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o))) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1));
+  -webkit-mask-image: var(--cbl-holo-light-mask); mask-image: var(--cbl-holo-light-mask);
+}
+/* Masked to the print's own foil areas once its pixels were read. */
+[data-cbl-holo-mask="ready"] > .cbl-holo > .cbl-holo-field {
+  -webkit-mask-image: var(--cbl-holo-mask-field), var(--cbl-holo-light-mask); mask-image: var(--cbl-holo-mask-field), var(--cbl-holo-light-mask);
+  -webkit-mask-size: var(--cbl-holo-mask-size), 100% 100%; mask-size: var(--cbl-holo-mask-size), 100% 100%;
+  -webkit-mask-position: var(--cbl-holo-mask-position), 0 0; mask-position: var(--cbl-holo-mask-position), 0 0;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-composite: source-in; mask-composite: intersect;
+}
+.cbl-holo > .cbl-holo-line { display: none; }
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo$="-p"], [data-cbl-holo$="-pp"]) > .cbl-holo > .cbl-holo-line {
+  display: block;
+  --cbl-holo-near: .8; --cbl-holo-far: .42;
+  opacity: calc((var(--cbl-holo-line-rest) + (var(--cbl-holo-line-active) - var(--cbl-holo-line-rest)) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o))) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1));
+  -webkit-mask-image: var(--cbl-holo-mask-line), var(--cbl-holo-light-mask); mask-image: var(--cbl-holo-mask-line), var(--cbl-holo-light-mask);
+  -webkit-mask-size: var(--cbl-holo-mask-size), 100% 100%; mask-size: var(--cbl-holo-mask-size), 100% 100%;
+  -webkit-mask-position: var(--cbl-holo-mask-position), 0 0; mask-position: var(--cbl-holo-mask-position), 0 0;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-composite: source-in; mask-composite: intersect;
+  /* Metal ink: a saturated fine spectrum over neutral grey, recoloured into the line art;
+     glints ride on top. */
+  background-color: hsl(0,0%,50%); background-image: var(--cbl-holo-fine);
+  mix-blend-mode: hard-light;
+}
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo$="-p"], [data-cbl-holo$="-pp"]) > .cbl-holo > .cbl-holo-line::after {
+  background-image: var(--cbl-holo-tex-glint, none); background-size: calc(128px * var(--cbl-holo-k)) calc(128px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * -90px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -70px * var(--cbl-holo-k));
+  mix-blend-mode: screen; opacity: calc(.35 + .65 * var(--cbl-holo-o));
+}
+/* Glare: a broad sheen of the lamp on the gloss coating, never a spot; foils wash out a
+   little more at grazing angles. */
+.cbl-holo > .cbl-holo-glare {
+  background-image: radial-gradient(farthest-corner ellipse at var(--cbl-holo-x) var(--cbl-holo-y), hsla(var(--cbl-holo-tint),.42) 0%, hsla(var(--cbl-holo-tint),.16) 45%, hsla(0,0%,0%,.18) 100%);
+  mix-blend-mode: overlay;
+  opacity: calc((var(--cbl-holo-rest) * .35 + var(--cbl-holo-gloss) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o) * .6) * (.8 + var(--cbl-holo-graze) * var(--cbl-holo-c) * var(--cbl-holo-c))) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1));
+}
+
+/* ---------- C / U: plain stock ---------- */
+:where([data-cbl-holo="c"], [data-cbl-holo="u"]) { --cbl-holo-rest: 0; --cbl-holo-gloss: .5; }
+:is([data-cbl-holo="c"], [data-cbl-holo="u"]) > .cbl-holo > .cbl-holo-field { display: none; }
+:is([data-cbl-holo="c"], [data-cbl-holo="u"]) > .cbl-holo > .cbl-holo-glare {
+  background-image: radial-gradient(farthest-corner ellipse at var(--cbl-holo-x) var(--cbl-holo-y), hsla(0,0%,100%,.34) 0%, hsla(0,0%,100%,.1) 50%, hsla(0,0%,0%,.14) 100%);
+}
+
+/* ---------- R / LR / P: textured holo ---------- */
+:where([data-cbl-holo="r"]) { --cbl-holo-rest: .2; --cbl-holo-active: .72; --cbl-holo-near: .5; --cbl-holo-far: .2; --cbl-holo-gloss: .4; --cbl-holo-graze: .5; }
+:where([data-cbl-holo="lr"]) { --cbl-holo-rest: .22; --cbl-holo-active: .72; --cbl-holo-near: .6; --cbl-holo-far: .26; --cbl-holo-gloss: .44; --cbl-holo-graze: .9; --cbl-holo-tint: 195,100%,96%; --cbl-holo-glint: .55; }
+:where([data-cbl-holo="p"]) { --cbl-holo-rest: .22; --cbl-holo-active: .78; --cbl-holo-gloss: .42; --cbl-holo-graze: .6; --cbl-holo-glint: .7; }
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"], [data-cbl-holo="p"]) > .cbl-holo > .cbl-holo-field {
+  background-image: var(--cbl-holo-spectrum);
+  mix-blend-mode: color-dodge; filter: brightness(.72) contrast(1.3) saturate(1);
+}
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"], [data-cbl-holo="p"]) > .cbl-holo > .cbl-holo-field::before {
+  background-image: var(--cbl-holo-tex-grain, none); background-size: calc(256px * var(--cbl-holo-k)) calc(256px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * -40px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -30px * var(--cbl-holo-k));
+  mix-blend-mode: overlay;
+}
+:is([data-cbl-holo="lr"], [data-cbl-holo="p"]) > .cbl-holo > .cbl-holo-field::after {
+  background-image: var(--cbl-holo-tex-glint, none); background-size: calc(256px * var(--cbl-holo-k)) calc(256px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * 70px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * 52px * var(--cbl-holo-k));
+  mix-blend-mode: screen; opacity: calc(var(--cbl-holo-glint) * (.45 + .55 * var(--cbl-holo-o)));
+}
+
+/* ---------- + parallels: pinpoint glitter and silver frame metal ---------- */
+:where([data-cbl-holo$="-p"]) {
+  --cbl-holo-rest: .28; --cbl-holo-active: .82; --cbl-holo-near: .6; --cbl-holo-far: .24; --cbl-holo-line-rest: .32;
+  --cbl-holo-gloss: .4; --cbl-holo-graze: .6; --cbl-holo-tint: 210,40%,97%;
+  --cbl-holo-glitter-a: .5; --cbl-holo-glitter-b: .25;
+}
+:where([data-cbl-holo="r-p"], [data-cbl-holo="p-p"]) { --cbl-holo-glitter-a: .8; --cbl-holo-glitter-b: .5; }
+:where([data-cbl-holo="lr-p"]) { --cbl-holo-rest: .3; --cbl-holo-active: .86; --cbl-holo-glitter-a: 1; --cbl-holo-glitter-b: .85; --cbl-holo-graze: .75; }
+[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field {
+  background-color: hsl(0,0%,50%);
+  background-image: repeating-radial-gradient(ellipse 150% 115% at var(--cbl-holo-x) var(--cbl-holo-y), hsla(195,85%,60%,.22) 0%, hsla(250,80%,66%,.22) 7%, hsla(320,80%,64%,.22) 14%, hsla(30,85%,60%,.22) 21%, hsla(70,80%,58%,.22) 28%, hsla(150,75%,56%,.22) 35%, hsla(195,85%,60%,.22) 42%);
+  mix-blend-mode: hard-light;
+}
+/* Two glitter depths drift apart as the card turns, so grains flash on and off. */
+[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::before {
+  background-image: var(--cbl-holo-tex-glitter, none); background-size: calc(192px * var(--cbl-holo-k)) calc(192px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * -38px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -30px * var(--cbl-holo-k));
+  opacity: var(--cbl-holo-glitter-a);
+}
+[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::after {
+  background-image: var(--cbl-holo-tex-glitter-2, none); background-size: calc(160px * var(--cbl-holo-k)) calc(160px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * 54px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * 44px * var(--cbl-holo-k));
+  opacity: var(--cbl-holo-glitter-b);
+}
+
+/* ---------- ++ special parallels: mosaic holo and rainbow gold lines ---------- */
+:where([data-cbl-holo$="-pp"]) {
+  --cbl-holo-rest: .26; --cbl-holo-active: .74; --cbl-holo-near: .62; --cbl-holo-far: .28; --cbl-holo-line-rest: .38; --cbl-holo-line-active: .76;
+  --cbl-holo-gloss: .44; --cbl-holo-graze: .7; --cbl-holo-tint: 45,95%,90%;
+}
+[data-cbl-holo$="-pp"] > .cbl-holo > .cbl-holo-field {
+  background-color: hsl(0,0%,50%);
+  background-image: repeating-conic-gradient(from calc(var(--cbl-holo-fx) * 220deg + var(--cbl-holo-fy) * 120deg - 40deg) at calc(150% - var(--cbl-holo-x) * 2) 170%, hsla(320,85%,62%,.32) 0deg, hsla(190,85%,52%,.32) 9deg, hsla(95,80%,50%,.32) 18deg, hsla(265,85%,64%,.32) 27deg, hsla(40,85%,56%,.32) 36deg, hsla(320,85%,62%,.32) 45deg);
+  mix-blend-mode: hard-light;
+}
+[data-cbl-holo$="-pp"] > .cbl-holo > .cbl-holo-field::before {
+  background-image: var(--cbl-holo-tex-mosaic, none); background-size: calc(120px * var(--cbl-holo-k)) calc(105px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * -24px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -18px * var(--cbl-holo-k));
+  mix-blend-mode: overlay; opacity: .6;
+}
+[data-cbl-holo$="-pp"] > .cbl-holo > .cbl-holo-field::after {
+  background-image: var(--cbl-holo-tex-glint, none); background-size: calc(200px * var(--cbl-holo-k)) calc(200px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * 60px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * 48px * var(--cbl-holo-k));
+  mix-blend-mode: screen; opacity: calc(.25 + .45 * var(--cbl-holo-o));
+}
+
+/* Reduced motion: the light still answers hover and press, but nothing turns (board and hand
+   cards have no turn rule at all, so the site's own rotate stays). */
+@media (prefers-reduced-motion: reduce) {
+  #cardDetailV2 [data-cbl-holo-tilt],
+  .duo-art[data-cbl-holo-tilt] { transform: none !important; }
+}

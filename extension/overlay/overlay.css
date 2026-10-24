@@ -1,0 +1,465 @@
+/* Card info overlays: printed info on hand cards, live state on field Units and Bases.
+   Display only: every element ignores the pointer, so taps, drags, selection and the
+   site's card view reach the card underneath. Sizes use --u, 1% of the card's layout
+   width, so the overlay scales with the board like the card does. */
+
+.cbl-ov {
+  --cbl-ink: #0a0a0a;
+  --cbl-paper: #f2f2f2;
+  --cbl-panel: rgba(8, 10, 13, 0.9);
+  --cbl-line: rgba(242, 242, 242, 0.42);
+  --cbl-ap: #f2f2f2;
+  --cbl-hp: #8ff0ad;
+  --cbl-hurt: #ff5a5a;
+  --cbl-chip: #64d3d9;
+  --cbl-pilot: #ff8cba;
+  --cbl-command: #64b3ec;
+  --cbl-base: #e2d28f;
+  --cbl-d: calc(var(--u) * 20);
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 100%;
+  width: 100%;
+  /* Above the art, damage mark and native stat box; below the "can't attack" icon,
+     NEW badge and the site's selection and target reticles. */
+  z-index: 15;
+  pointer-events: none;
+  user-select: none;
+  font-family: "Orbitron", "Chakra Petch", sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  transition: opacity 0.15s linear;
+}
+.cbl-ov * { pointer-events: none; box-sizing: border-box; }
+.cbl-ov svg { display: block; width: 100%; height: 100%; }
+
+/* ---- Hand footer ------------------------------------------------------------- */
+
+.cbl-foot {
+  position: absolute;
+  right: calc(var(--u) * 3);
+  bottom: calc(var(--u) * 3);
+  display: grid;
+  grid-template-areas: ". type" "kws stats";
+  justify-items: end;
+  align-items: end;
+  column-gap: calc(var(--u) * 1.8);
+  row-gap: calc(var(--u) * 1.6);
+}
+.cbl-hand[data-mode="stack"] .cbl-foot {
+  left: calc(var(--u) * 1);
+  right: auto;
+  grid-template-areas: "type" "kws" "stats";
+  justify-items: start;
+}
+.cbl-hand[data-small] { --cbl-d: calc(var(--u) * 17.5); }
+
+.cbl-type {
+  grid-area: type;
+  padding: calc(var(--u) * 1.4) calc(var(--u) * 2.6);
+  border-radius: calc(var(--u) * 1.6);
+  background: var(--cbl-panel);
+  box-shadow: inset 0 0 0 1px var(--cbl-line);
+  font-size: calc(var(--u) * 7.4);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--cbl-paper);
+  white-space: nowrap;
+}
+.cbl-type[data-size="short"] { letter-spacing: 0.02em; }
+.cbl-type.pilot { color: var(--cbl-pilot); }
+.cbl-type.base { color: var(--cbl-base); }
+
+.cbl-kws {
+  grid-area: kws;
+  display: flex;
+  gap: calc(var(--u) * 1.8);
+}
+.cbl-kws:empty { display: none; }
+
+.cbl-kw {
+  position: relative;
+  flex: none;
+  width: var(--cbl-d);
+  height: var(--cbl-d);
+  padding: calc(var(--cbl-d) * 0.17);
+  border-radius: 50%;
+  background: var(--cbl-paper);
+  color: var(--cbl-ink);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 calc(var(--u) * 0.6) calc(var(--u) * 2) rgba(0, 0, 0, 0.75);
+}
+/* Possible, not guaranteed: hollow, dashed and faded; the number stays readable. */
+.cbl-kw.cond {
+  background: rgba(10, 12, 16, 0.86);
+  color: var(--cbl-paper);
+  box-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 2) rgba(0, 0, 0, 0.6);
+  border: max(1px, calc(var(--u) * 1.3)) dashed rgba(242, 242, 242, 0.82);
+  padding: calc(var(--cbl-d) * 0.14);
+}
+.cbl-kw.cond > svg { opacity: 0.55; }
+.cbl-kw.more {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--cbl-panel);
+  color: var(--cbl-paper);
+  box-shadow: inset 0 0 0 1px var(--cbl-line);
+  font-size: calc(var(--cbl-d) * 0.42);
+  font-weight: 800;
+}
+.cbl-chip {
+  position: absolute;
+  right: calc(var(--cbl-d) * -0.2);
+  bottom: calc(var(--cbl-d) * -0.18);
+  min-width: calc(var(--cbl-d) * 0.5);
+  height: calc(var(--cbl-d) * 0.5);
+  padding: 0 calc(var(--cbl-d) * 0.08);
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--cbl-d) * 0.14);
+  background: var(--cbl-chip);
+  color: var(--cbl-ink);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85);
+  font-size: calc(var(--cbl-d) * 0.4);
+  font-weight: 900;
+  opacity: 1;
+}
+
+.cbl-stats {
+  grid-area: stats;
+  display: flex;
+  align-items: center;
+  height: calc(var(--u) * 20);
+  padding: 0 calc(var(--u) * 3.4);
+  gap: calc(var(--u) * 2.6);
+  border-radius: calc(var(--u) * 3.4);
+  background: var(--cbl-panel);
+  box-shadow: inset 0 0 0 1px var(--cbl-line), 0 calc(var(--u) * 0.6) calc(var(--u) * 2.4) rgba(0, 0, 0, 0.8);
+  font-size: calc(var(--u) * 14.5);
+  font-weight: 900;
+  white-space: nowrap;
+}
+.cbl-stats > i {
+  align-self: stretch;
+  width: 1px;
+  margin: calc(var(--u) * 3.6) 0;
+  background: rgba(242, 242, 242, 0.5);
+}
+.cbl-ap { color: var(--cbl-ap); }
+.cbl-hp { color: var(--cbl-hp); }
+/* Narrow strip: AP above HP in a thin box. */
+.cbl-hand[data-narrow] .cbl-stats {
+  flex-direction: column;
+  height: auto;
+  padding: calc(var(--u) * 2.6) calc(var(--u) * 2.2);
+  gap: calc(var(--u) * 2);
+}
+.cbl-hand[data-narrow] .cbl-stats > i { width: auto; height: 1px; margin: 0; align-self: stretch; }
+
+.cbl-tag {
+  grid-area: stats;
+  padding: calc(var(--u) * 3.4) calc(var(--u) * 3.6);
+  border-radius: calc(var(--u) * 3.2);
+  background: var(--cbl-panel);
+  box-shadow: inset 0 0 0 1px var(--cbl-line), 0 calc(var(--u) * 0.6) calc(var(--u) * 2.4) rgba(0, 0, 0, 0.8);
+  color: var(--cbl-command);
+  font-size: calc(var(--u) * 8);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.cbl-tag[data-size="tiny"] {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0;
+  padding: calc(var(--u) * 2.4) calc(var(--u) * 2);
+}
+
+/* A card that can be played now: the site's own glow turns a soft, static gold.
+   Unplayable cards dim only their art, never the footer. cbl-glow marks the hand's known
+   cards while the playable-card glow is on, with or without their footers. */
+.hand-row[data-hand-player="p1"] > .card.cbl-glow.card-available-action::after {
+  box-shadow: 0 0 3px 1px rgba(255, 220, 110, 0.9), 0 0 14px 4px rgba(240, 197, 63, 0.6) !important;
+  animation: none !important;
+}
+/* A lifted card, and cards the site offers as a target or choice (a discard, for example),
+   keep their art bright too: while a card is lifted the site drops card-available-action
+   from the whole hand. */
+.hand-row[data-hand-player="p1"] > .card.cbl-glow:not(.card-available-action):not(.cmd-drag-lift):not(.lab-targetable):not(.card-action-candidate) > img.card-art {
+  filter: saturate(0.4) brightness(0.62);
+  transition: filter 0.15s linear;
+}
+.hand-row[data-hand-player="p1"] > .card.cbl-host > .stat-overlay,
+.cbl-field-host > .stat-overlay { display: none !important; }
+
+/* A card lifted to be played (dragged or tapped) keeps its footer for a moment, then
+   fades it out while you aim. */
+.cbl-ov.cbl-fading { opacity: 0; }
+
+/* ---- Field badge ------------------------------------------------------------- */
+
+.cbl-live {
+  position: absolute;
+  right: calc(var(--u) * 3);
+  bottom: calc(var(--u) * 3);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 1.8);
+}
+.cbl-live[data-stack] { flex-direction: column; align-items: flex-end; }
+.cbl-live .cbl-kws { gap: calc(var(--u) * 1.6); }
+.cbl-field .cbl-kw {
+  --cbl-d: calc(var(--u) * 19);
+  padding: calc(var(--cbl-d) * 0.16);
+}
+.cbl-field .cbl-chip { right: calc(var(--cbl-d) * -0.16); bottom: calc(var(--cbl-d) * -0.14); }
+.cbl-badge {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--u) * 2.6);
+  height: calc(var(--u) * 19);
+  padding: 0 calc(var(--u) * 3.4);
+  border-radius: calc(var(--u) * 3.4);
+  background: var(--cbl-panel);
+  box-shadow: inset 0 0 0 1px var(--cbl-line), 0 calc(var(--u) * 0.6) calc(var(--u) * 2.4) rgba(0, 0, 0, 0.85);
+  align-items: center;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.cbl-badge small {
+  margin-right: calc(var(--u) * 1);
+  font-family: "Chakra Petch", sans-serif;
+  font-size: calc(var(--u) * 8);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(242, 242, 242, 0.72);
+}
+.cbl-badge b { font-size: calc(var(--u) * 13.5); }
+.cbl-hpv { display: inline-flex; align-items: baseline; }
+.cbl-badge .cbl-ap { color: var(--cbl-ap); }
+.cbl-badge .cbl-hp { color: var(--cbl-hp); }
+.cbl-badge .cbl-hp.hurt { color: var(--cbl-hurt); }
+.cbl-badge .cbl-max { font-size: calc(var(--u) * 8.5); color: rgba(242, 242, 242, 0.78); }
+
+/* A rested Unit tilts a little instead of turning sideways, so its badge stays
+   readable, and carries a rested chip. */
+.play-area .card.tapped.cbl-field-host,
+.play-area .play-stack.tapped.cbl-field-host { transform: rotate(12deg); }
+.play-area .card.tapped.cbl-field-host:hover,
+.play-area .play-stack.tapped.cbl-field-host:hover { transform: rotate(12deg) scale(1.05); }
+.play-area .play-stack.has-pilot.tapped.cbl-field-host { translate: 0 calc(-17px * var(--tt-unit-scale, 1)); }
+.play-area .card.tapped.cbl-field-host > img.card-art,
+.play-area .play-stack.tapped.cbl-field-host > .stack-unit > img.card-art { filter: brightness(0.72) saturate(0.8); }
+.cbl-rest {
+  position: absolute;
+  top: calc(var(--u) * 3);
+  right: calc(var(--u) * 3);
+  display: none;
+  width: calc(var(--u) * 19);
+  height: calc(var(--u) * 19);
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cbl-panel);
+  box-shadow: inset 0 0 0 1px var(--cbl-line);
+  padding: calc(var(--u) * 3.4);
+  color: #8fb6ff;
+}
+.cbl-field[data-rested] .cbl-rest { display: grid; }
+
+/* ---- Resource readout -------------------------------------------------------------- */
+
+/* Active resources in a hexagon: the site's counter badge (its glowing Shield count) in the
+   site's seat colours, blue for you and red for the opponent. The readout's box is the
+   label's (beside or above it) or a slot just past the last card, at the label's font size,
+   so sizes in em scale with the label. HEX and GAP in resources.js match these sizes. */
+.cbl-ov.cbl-res,
+.cbl-ov.cbl-res-tab {
+  --res-hi: #c4d7ff;
+  --res-mid: #6699ff;
+  --res-lo: #3f70e0;
+  --res-deep: #2a4cae;
+  --res-ink: #061633;
+  --res-glow: 102, 153, 255;
+}
+.cbl-ov.cbl-res {
+  bottom: auto;
+  margin: 0; /* not the site's gap between resource cards */
+  filter: drop-shadow(0 0 0.16em rgba(var(--res-glow), 0.9)) drop-shadow(0 0 0.5em rgba(var(--res-glow), 0.5))
+    drop-shadow(0 0.06em 0.12em rgba(0, 0, 0, 0.7));
+}
+.resources-row[data-res-player="p2"] > .cbl-res,
+.cbl-ov.cbl-res-tab[data-seat="p2"] {
+  --res-hi: #ffc6c6;
+  --res-mid: #ff6666;
+  --res-lo: #e04646;
+  --res-deep: #ad2b2b;
+  --res-ink: #330707;
+  --res-glow: 255, 102, 102;
+}
+.cbl-res-cell {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 2.6em;
+  height: 2.25em;
+  clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
+  background:
+    radial-gradient(70% 55% at 42% 30%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 60%),
+    linear-gradient(158deg, var(--res-hi) 0%, var(--res-mid) 42%, var(--res-lo) 78%, var(--res-deep) 100%);
+  color: var(--res-ink);
+}
+/* Beside the label, away from the cards; just past the last card; or above the label,
+   right-aligned like its text. */
+.cbl-res[data-place="left"] .cbl-res-cell { right: 100%; top: 50%; translate: 0 -50%; margin-right: 0.4em; }
+.cbl-res[data-place="right"] .cbl-res-cell { left: 100%; top: 50%; translate: 0 -50%; margin-left: 0.4em; }
+.cbl-res[data-place="after"] .cbl-res-cell { left: 50%; top: 50%; translate: -50% -50%; }
+.cbl-res[data-place="top"] .cbl-res-cell { right: 0; bottom: 100%; margin-bottom: 0.4em; }
+.cbl-res:not([data-place]) { visibility: hidden; }
+/* Centred by its ink from overlay.js (translate). */
+.cbl-res-cell > b { position: relative; font-size: 1.4em; font-weight: 900; }
+.cbl-res[data-wide] .cbl-res-cell > b { font-size: 1.1em; }
+/* Nothing left to pay with: a dark cell inside a dim edge of the seat colour, without the glow. */
+.cbl-res[data-spent] { filter: drop-shadow(0 0.06em 0.12em rgba(0, 0, 0, 0.8)); }
+.cbl-res[data-spent] .cbl-res-cell,
+.cbl-res-tab[data-spent] .cbl-res-cell { background: rgba(var(--res-glow), 0.6); color: rgba(242, 242, 242, 0.55); }
+.cbl-res[data-spent] .cbl-res-cell::before,
+.cbl-res-tab[data-spent] .cbl-res-cell::before {
+  content: "";
+  position: absolute;
+  inset: max(1px, 0.1em);
+  clip-path: inherit;
+  background: rgba(8, 10, 13, 0.92);
+}
+
+/* The small tab beside the site's effect panel while it hides a row's label or hexagon numbers: the hexagon,
+   then the level in the site's label type, on the panel's dark glass with a rim of the seat
+   colour. Fixed on <body> like the panel, just above it (z-index 118); sizes in em of the
+   row's label on screen. */
+.cbl-ov.cbl-res-tab {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: auto;
+  width: auto;
+  height: auto;
+  z-index: 119;
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.22em 0.7em 0.22em 0.25em;
+  border: 1px solid rgba(var(--res-glow), 0.55);
+  border-radius: 0.45em;
+  background: rgba(15, 15, 15, 0.82);
+  backdrop-filter: blur(14px) saturate(1.15);
+  box-shadow: 0 0 0.6em rgba(var(--res-glow), 0.35), 0 0.2em 0.9em rgba(0, 0, 0, 0.5);
+  transition: none;
+}
+.cbl-res-tab .cbl-res-cell {
+  position: relative;
+  flex: none;
+  width: 2.2em;
+  height: 1.9em;
+  filter: drop-shadow(0 0 0.16em rgba(var(--res-glow), 0.9));
+}
+.cbl-res-tab .cbl-res-cell > b { font-size: 1.2em; }
+.cbl-res-tab[data-wide] .cbl-res-cell > b { font-size: 0.95em; }
+.cbl-res-tab[data-spent] .cbl-res-cell { filter: none; }
+.cbl-res-lvl {
+  font-family: "Chakra Petch", sans-serif;
+  font-size: 1.15em;
+  letter-spacing: 0.03em;
+  color: #eee;
+  white-space: nowrap;
+}
+
+/* ---- Hand count ------------------------------------------------------------------- */
+
+/* Cards in your hand against the hand limit ("7/10"), outside the top-left corner of the
+   hand's frame, in the level label's type at its size (font-size from overlay.js): a quiet
+   aside, yellow at the limit and red over it. */
+.cbl-ov.cbl-hand-count {
+  bottom: auto;
+  width: auto;
+  height: auto;
+  display: flex;
+  align-items: baseline;
+  font-family: "Chakra Petch", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: rgb(148, 148, 148);
+  text-shadow: 0 0 0.3em rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  transition: none;
+}
+.cbl-hand-count > b { font-weight: 700; color: #d6d6d6; }
+.cbl-hand-count > small { font-size: 0.72em; }
+.cbl-hand-count[data-state="full"] { color: #ffd54a; }
+.cbl-hand-count[data-state="over"] { color: var(--cbl-hurt); }
+.cbl-hand-count[data-state] > b { color: inherit; }
+.cbl-hand-count:not([data-at]) { visibility: hidden; }
+
+/* ---- Card view: live AP/HP box ------------------------------------------------------ */
+
+/* The site draws a Unit's live AP/HP over the card view's art once a Pilot, an effect or
+   damage changes it: 28% of the card's width, flush with the corner, over the end of the
+   trait line. It sits on the printed AP/HP box instead, at that box's size and place
+   (19.8% by 12% of the card's width, 3.3% in from the right edge, on the bottom edge). Each
+   number is centred in its half like the printed ones (the site pads a single digit toward
+   the divider inline). A single digit is near the printed digits' size; a longer value is
+   smaller, so 10 to 19 keep the site's own clearance from the frame and the divider; 20 or
+   more touches them (the site's own box clips it). The site's _anchorStatValue() marks a
+   longer value with an inline justify-content: center. Sizes in cqw of the art, the site's
+   container. Off in the extension's settings (data-cbl-off), the site's own box stays. */
+:where(:root:not([data-cbl-off~="viewStats"])) .stat-overlay.detail-stat-overlay {
+  font-size: 6cqw;
+  width: 3.3em;
+  right: 3.3cqw;
+}
+:where(:root:not([data-cbl-off~="viewStats"])) .detail-stat-overlay .stat-box > span {
+  font-size: 1.3em;
+  justify-content: center;
+  padding: 0 !important;
+}
+:where(:root:not([data-cbl-off~="viewStats"])) .detail-stat-overlay .stat-box > span[style*="justify-content: center"] { font-size: 1em; }
+
+/* ---- Card view: printed abilities ------------------------------------------------ */
+
+.cbl-abilities {
+  margin: 0.6em 0 0.2em;
+  padding: 0.55em 0.7em;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  font-size: 0.86em;
+  line-height: 1.35;
+}
+.cbl-abilities > b {
+  display: block;
+  margin-bottom: 0.35em;
+  font-family: "Orbitron", sans-serif;
+  font-size: 0.78em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(242, 242, 242, 0.72);
+}
+.cbl-abilities ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4em; }
+.cbl-abilities li { display: grid; grid-template-columns: 1.6em 1fr; gap: 0.5em; align-items: start; }
+.cbl-abilities li > span:first-child {
+  width: 1.6em;
+  height: 1.6em;
+  padding: 0.24em;
+  border-radius: 50%;
+  background: #f2f2f2;
+  color: #0a0a0a;
+}
+.cbl-abilities li.cond > span:first-child {
+  background: rgba(10, 12, 16, 0.86);
+  color: #f2f2f2;
+  border: 1.5px dashed rgba(242, 242, 242, 0.82);
+  padding: 0.18em;
+}
+.cbl-abilities li.cond > span:first-child > svg { opacity: 0.6; }
+.cbl-abilities svg { display: block; width: 100%; height: 100%; }
+.cbl-abilities strong { color: #f2f2f2; }
+.cbl-abilities em { font-style: normal; color: rgba(242, 242, 242, 0.7); }

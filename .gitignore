@@ -1,0 +1,20 @@
+# Generated packages and build state.
+/build/
+/dist/
+*.apk
+*.aab
+*.crx
+*.zip
+# Signing keys and local configuration.
+*.jks
+*.keystore
+*.p12
+*.pem
+.env
+local.properties
+.gradle/
+**/build/
+__pycache__/
+*.pyc
+.idea/
+node_modules/

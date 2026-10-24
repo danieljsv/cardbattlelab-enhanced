@@ -1,0 +1,98 @@
+/* The settings menu in the site's dark HUD look: glass panels, the overlay's cyan for "on". */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d11;
+  --panel: rgba(255, 255, 255, 0.04);
+  --line: rgba(255, 255, 255, 0.1);
+  --ink: #f2f2f2;
+  --dim: rgba(242, 242, 242, 0.62);
+  --on: #64d3d9;
+  --off: #3a3f48;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); }
+body {
+  width: 420px;
+  padding: 12px 12px 10px;
+  color: var(--ink);
+  font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+header img { flex: none; border-radius: 6px; }
+header div { flex: 1; min-width: 0; }
+h1 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: 0.01em; }
+header p { margin: 1px 0 0; color: var(--dim); font-size: 12px; }
+#all {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid rgba(100, 211, 217, 0.55);
+  border-radius: 6px;
+  background: rgba(100, 211, 217, 0.1);
+  color: var(--on);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+#all:hover { background: rgba(100, 211, 217, 0.18); }
+#all[hidden] { display: none; }
+
+section {
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+section:last-child { margin-bottom: 0; }
+h2 {
+  margin: 0;
+  padding: 7px 12px 1px;
+  color: var(--dim);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.feature {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px 6px;
+  cursor: pointer;
+}
+.feature + .feature { border-top: 1px solid var(--line); }
+.feature > span { flex: 1; min-width: 0; }
+.feature strong { display: block; font-weight: 600; }
+.feature small { display: block; margin-top: 1px; color: var(--dim); font-size: 11.5px; }
+
+/* Switch */
+.feature input {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--off);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.feature input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #cfd3da;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  transition: translate 0.15s, background 0.15s;
+}
+.feature input:checked { background: var(--on); }
+.feature input:checked::after { translate: 14px 0; background: #0b0d11; }
+.feature input:focus-visible { outline: 2px solid var(--on); outline-offset: 2px; }
+.feature:has(input:not(:checked)) strong { color: var(--dim); }
+

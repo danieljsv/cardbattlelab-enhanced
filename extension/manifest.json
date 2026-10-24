@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Card Battle Lab Enhanced",
+  "version": "1.0.0",
+  "minimum_chrome_version": "111",
+  "description": "Read card stats, keywords and active resources at a glance in Card Battle Lab, with a rarity foil on each card.",
+  "icons": {"128": "icons/cardbattlelab.png"},
+  "action": {
+    "default_title": "Card Battle Lab Enhanced",
+    "default_icon": "icons/cardbattlelab.png",
+    "default_popup": "settings/popup.html"
+  },
+  "options_ui": {"page": "settings/popup.html", "open_in_tab": false},
+  "permissions": ["storage"],
+  "content_scripts": [{
+    "matches": ["https://cardbattlelab.com/*", "https://www.cardbattlelab.com/*"],
+    "js": ["settings/features.js", "settings/bridge.js"],
+    "run_at": "document_start"
+  }, {
+    "matches": ["https://cardbattlelab.com/*", "https://www.cardbattlelab.com/*"],
+    "js": ["overlay.js"],
+    "run_at": "document_idle",
+    "world": "MAIN"
+  }]
+}
