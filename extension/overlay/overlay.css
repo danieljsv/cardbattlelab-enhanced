@@ -190,6 +190,8 @@
   filter: saturate(0.4) brightness(0.62);
   transition: filter 0.15s linear;
 }
+/* A card that the site has just built is dim at once, with no fade (overlay.js removes cbl-glow-new). */
+.hand-row[data-hand-player="p1"] > .card.cbl-glow-new > img.card-art { transition: none !important; }
 .hand-row[data-hand-player="p1"] > .card.cbl-host > .stat-overlay,
 .cbl-field-host > .stat-overlay { display: none !important; }
 
