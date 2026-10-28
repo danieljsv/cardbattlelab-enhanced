@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Card Battle Lab Enhanced",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minimum_chrome_version": "111",
   "description": "Read card stats, keywords and active resources at a glance in Card Battle Lab, with a rarity foil on each card.",
   "icons": {"128": "icons/cardbattlelab.png"},
