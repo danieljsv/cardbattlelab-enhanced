@@ -123,11 +123,46 @@
     const canvas = (w, h) => { const c = doc.createElement('canvas'); c.width = w; c.height = h; return c; };
     // Every texture and mask URL, revoked by clear().
     const urls = new Set();
-    const blobUrl = c => new Promise(resolve => c.toBlob(b => {
+    const blobUrl = (c, ...type) => new Promise(resolve => c.toBlob(b => {
       const url = b ? URL.createObjectURL(b) : null;
       if (url) urls.add(url);
       resolve(url);
-    }, 'image/png'));
+    }, ...(type.length ? type : ['image/png'])));
+    // Chrome writes WebP at quality 1 without loss and off the main thread, so the faces are
+    // ready sooner and are smaller than PNG. A probe checks one time that each opaque pixel comes
+    // back the same; if not, the faces stay PNG.
+    let faceType = null;
+    function faceFormat() {
+      if (faceType) return faceType;
+      const c = canvas(16, 1), x = c.getContext('2d'), img = x.createImageData(16, 1);
+      for (let i = 0; i < 16; i++) img.data.set([(i * 89 + 7) & 255, (i * 41 + 200) & 255, (i * 157 + 31) & 255, 255], i * 4);
+      x.putImageData(img, 0, 0);
+      // The blob is read as it is: the site does not let the page fetch blob URLs.
+      faceType = new Promise(resolve => c.toBlob(resolve, 'image/webp', 1))
+        .then(b => b && b.type === 'image/webp' ? createImageBitmap(b) : null)
+        .then(bitmap => {
+          if (!bitmap) return ['image/png'];
+          const check = canvas(16, 1).getContext('2d', {willReadFrequently: true});
+          check.drawImage(bitmap, 0, 0);
+          return check.getImageData(0, 0, 16, 1).data.every((v, i) => v === img.data[i]) ? ['image/webp', 1] : ['image/png'];
+        })
+        .catch(() => ['image/png']);
+      return faceType;
+    }
+    // The masks are written as PNG files here (H.png): this is much quicker than the browser's
+    // encoder, which compresses them on the main thread. The pixels are the same. The rows are
+    // compressed with the browser's zlib (CompressionStream), which is fast on smooth masks, so
+    // the masks that stay in memory for the session are small. Without it, the rows are stored.
+    const deflate = typeof CompressionStream === 'function'
+      ? rows => new Response(new Blob([rows]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer()
+        .then(b => new Uint8Array(b), () => null)
+      : () => Promise.resolve(null);
+    async function pngUrl(width, height, pixels, channels = 1) {
+      const rows = H.pngRows(width, height, pixels, channels), file = H.png(width, height, channels, rows, await deflate(rows));
+      const url = URL.createObjectURL(new Blob([file], {type: 'image/png'}));
+      urls.add(url);
+      return url;
+    }
     // Frosted holo texture (R/LR/P): two octaves of soft grain around neutral grey, each
     // upscaled from a tile padded with its own wrapped edges so smoothing crosses the seams.
     function grain(S = 512) {
@@ -150,15 +185,72 @@
       x.globalAlpha = 1;
       return c;
     }
-    // Pinpoint glitter (+ parallels): saturated multicolour specks, wrapped at the edges.
-    function glitter(S = 384, count = 5200, seed = 5) {
-      const c = canvas(S, S), x = c.getContext('2d'), rnd = H.random(seed);
-      for (let i = 0; i < count; i++) {
-        const px = rnd() * S, py = rnd() * S, size = rnd() < 0.18 ? 2.4 : rnd() < 0.5 ? 1.6 : 1.1;
-        const h = Math.floor(rnd() * 360), l = 50 + rnd() * 30;
-        x.fillStyle = `hsla(${h},100%,${l}%,${0.55 + rnd() * 0.45})`;
-        for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) x.fillRect(px + ox - size / 2, py + oy - size / 2, size, size);
+    // Embossed surface (+ parallels): the fine grain of the real cards' stock, a cross weave
+    // (stronger along the rows) with tiny pebbles, shaded around neutral grey by a light from
+    // the top left (side 1) or the top right (side -1). Both sides draw the same relief. The
+    // relief keeps only its fine detail, so it never forms large cells. Wrapped at the edges.
+    function emboss(side, S = 256, count = 9000, seed = 5) {
+      const rnd = H.random(seed), height = new Float32Array(S * S), at = (x, y) => ((y + S) % S) * S + (x + S) % S;
+      // Threads about 2 px apart (120 per tile); their phase wobbles along each thread and
+      // differs from thread to thread, so the weave never reads as straight lines.
+      const f = Math.PI * 240 / S, turn = Array.from({length: 6}, () => rnd() * Math.PI * 2);
+      const wobble = (t, u, o) => 1.2 * Math.sin(Math.PI * 10 * t / S + turn[o]) + 0.9 * Math.sin(Math.PI * 26 * t / S + turn[o + 1] + u * 0.7)
+        + 0.6 * Math.sin(Math.PI * 4 * u / S + turn[o + 2]);
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) height[y * S + x] = 0.3 * Math.cos(f * y + wobble(x, y, 0)) + 0.25 * Math.cos(f * x + wobble(y, x, 3));
       }
+      for (let i = 0; i < count; i++) {
+        const cx = rnd() * S, cy = rnd() * S, r = 0.5 + rnd() * 0.4, a = 0.5 + rnd() * 0.5;
+        for (let y = Math.floor(cy) - 2; y <= Math.floor(cy) + 2; y++) {
+          for (let x = Math.floor(cx) - 2; x <= Math.floor(cx) + 2; x++) height[at(x, y)] += a * Math.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (r * r));
+        }
+      }
+      // High pass: minus the 7 x 7 local mean.
+      const mean = new Float32Array(S * S), row = new Float32Array(S * S);
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { let t = 0; for (let k = -3; k <= 3; k++) t += height[at(x + k, y)]; row[y * S + x] = t / 7; }
+      for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { let t = 0; for (let k = -3; k <= 3; k++) t += row[at(x, y + k)]; mean[y * S + x] = t / 7; }
+      // A slope facing the light is bright. The shading is scaled to a fixed contrast.
+      const shade = new Float32Array(S * S);
+      let sum = 0;
+      for (let y = 0; y < S; y++) {
+        for (let x = 0; x < S; x++) {
+          const h = (px, py) => height[at(px, py)] - mean[at(px, py)];
+          const v = (h(x + 1, y) - h(x - 1, y)) * side + (h(x, y + 1) - h(x, y - 1));
+          shade[y * S + x] = v; sum += v * v;
+        }
+      }
+      const gain = 30 / Math.sqrt(sum / (S * S) || 1);
+      const c = canvas(S, S), x = c.getContext('2d'), img = x.createImageData(S, S);
+      for (let i = 0; i < S * S; i++) {
+        img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 128 + shade[i] * gain; img.data[i * 4 + 3] = 255;
+      }
+      x.putImageData(img, 0, 0);
+      return c;
+    }
+    // Fine fingerprint lines (LR): the real cards' foil has fine parallel lines that bend
+    // into arcs and whorls. The lines follow the contours of a slow wave field, so they stay
+    // about 3 px apart (about 1.1 px on screen at the 155 px face) and wrap at the edges.
+    // Each wave's sine splits into a column part and a row part (sin(A + B)), both from tables,
+    // and the final cosine comes from a table too, so no pixel calls Math.sin or Math.cos.
+    function fingerprint(S = 1024) {
+      const c = canvas(S, S), x = c.getContext('2d'), img = x.createImageData(S, S), rnd = H.random(41);
+      const waves = [[1, 2, 24], [2, -1, 18], [3, 1, 11], [-1, 3, 10], [2, 3, 6], [5, -4, 4], [-6, 5, 3.5], [7, 3, 3]].map(([a, b, amp]) => [a, b, amp, rnd() * Math.PI * 2]);
+      const n = waves.length, sx = new Float32Array(n * S), cx = new Float32Array(n * S), sy = new Float32Array(n), cy = new Float32Array(n);
+      waves.forEach(([a, , amp], k) => {
+        for (let xx = 0; xx < S; xx++) { const t = 2 * Math.PI * a * xx / S; sx[k * S + xx] = amp * Math.sin(t); cx[k * S + xx] = amp * Math.cos(t); }
+      });
+      const N = 4096, shade = new Uint8ClampedArray(N);
+      for (let i = 0; i < N; i++) shade[i] = 128 + 36 * Math.cos(2 * Math.PI * i / N);
+      for (let y = 0; y < S; y++) {
+        waves.forEach(([, b, , turn], k) => { const t = 2 * Math.PI * b * y / S + turn; sy[k] = Math.sin(t); cy[k] = Math.cos(t); });
+        for (let xx = 0; xx < S; xx++) {
+          let phase = (150 * xx + 300 * y) / S;
+          for (let k = 0, j = xx; k < n; k++, j += S) phase += sx[j] * cy[k] + cx[j] * sy[k];
+          const i = (y * S + xx) * 4;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = shade[Math.round((phase - Math.floor(phase)) * N) & (N - 1)]; img.data[i + 3] = 255;
+        }
+      }
+      x.putImageData(img, 0, 0);
       return c;
     }
     // Sparse white glints with a few four-point flares.
@@ -188,16 +280,41 @@
       }
       return c;
     }
-    let textures = null;
+    // The textures are made when the page is idle, one in each idle period, so the first foil
+    // card does not wait for them and no long task stops the page. When a card needs them first,
+    // they are made without a wait for idle time. clear() starts a new epoch, and textures of an
+    // old epoch are not added.
+    let epoch = 0, needed = false;
+    const idle = () => new Promise(resolve => !needed && typeof win.requestIdleCallback === 'function'
+      ? win.requestIdleCallback(() => resolve(), {timeout: 300}) : setTimeout(resolve, 0));
+    async function made(makers) {
+      const list = [];
+      for (const make of makers) { await idle(); list.push(blobUrl(make())); }
+      return Promise.all(list);
+    }
+    // The flags tell that a texture set is in the sheet, so a print with its masks ready shows
+    // its finish at once.
+    let textures = null, lines = null, texturesReady = false, linesReady = false;
     function ensureTextures() {
       if (textures) return textures;
-      textures = Promise.all([grain(), glitter(), glitter(384, 2600, 9), glints(), mosaic()].map(blobUrl)).then(list => {
-        if (list.some(url => !url)) return;
-        const [frost, glitterA, glitterB, glint, cells] = list;
-        ensureSheet().insertRule(`:root{--cbl-holo-tex-grain:url("${frost}");--cbl-holo-tex-glitter:url("${glitterA}");`
-          + `--cbl-holo-tex-glitter-2:url("${glitterB}");--cbl-holo-tex-glint:url("${glint}");--cbl-holo-tex-mosaic:url("${cells}")}`, 0);
+      const at = epoch;
+      textures = made([grain, () => emboss(1), () => emboss(-1), glints, mosaic]).then(list => {
+        if (at !== epoch || list.some(url => !url)) return;
+        const [frost, reliefL, reliefR, glint, cells] = list;
+        ensureSheet().insertRule(`:root{--cbl-holo-tex-grain:url("${frost}");--cbl-holo-tex-emboss:url("${reliefL}");`
+          + `--cbl-holo-tex-emboss-2:url("${reliefR}");--cbl-holo-tex-glint:url("${glint}");--cbl-holo-tex-mosaic:url("${cells}")}`, 0);
+        texturesReady = true;
       }).catch(onError);
       return textures;
+    }
+    // Only LR prints use the line texture.
+    function ensureLines() {
+      if (lines) return lines;
+      const at = epoch;
+      lines = made([fingerprint]).then(([url]) => {
+        if (at === epoch && url) { ensureSheet().insertRule(`:root{--cbl-holo-tex-lines:url("${url}")}`, 0); linesReady = true; }
+      }).catch(onError);
+      return lines;
     }
 
     // ---- Per-print masks ------------------------------------------------------------------------
@@ -212,30 +329,121 @@
         return response.ok ? await createImageBitmap(await response.blob()) : null;
       } catch (e) { return null; }
     }
-    async function maskUrl(mask) {
+    function imageCanvas(image) {
+      const c = canvas(image.width, image.height), x = c.getContext('2d'), img = x.createImageData(image.width, image.height);
+      img.data.set(image.rgba);
+      x.putImageData(img, 0, 0);
+      return c;
+    }
+    function alphaCanvas(mask) {
       const c = canvas(mask.width, mask.height), x = c.getContext('2d'), img = x.createImageData(mask.width, mask.height);
       for (let i = 0; i < mask.alpha.length; i++) img.data[i * 4 + 3] = mask.alpha[i];
       x.putImageData(img, 0, 0);
-      return blobUrl(c);
+      return c;
     }
-    async function buildMasks(bitmap, kind) {
+    const maskUrl = mask => pngUrl(mask.width, mask.height, mask.alpha);
+    // Draws a source through each [filter, composite] step in turn, on a canvas of its size.
+    // A step can draw another image (a mask) in place of the source, scaled to the canvas.
+    function paint(source, steps) {
+      const c = canvas(source.width, source.height), x = c.getContext('2d');
+      for (const [filter, op, image = source] of steps) { x.filter = filter; x.globalCompositeOperation = op; x.drawImage(image, 0, 0, c.width, c.height); }
+      return c;
+    }
+    // The R and LR layers draw the face again through fixed filters (holo.css). Each filtered
+    // face is made here one time, so a turning card only moves masks and runs no filter on each
+    // frame. Keep these filters equal to the ones in holo.css, which show until the masks are
+    // ready. The colour shift layers are made with their colour blend over the face and then
+    // the ink filter, as they show inside the ink layer. The shift layers and the edge of the R
+    // band are cut to the art, so the frame and its tags keep their colour.
+    const INK = 'saturate(1.18) contrast(1.1) brightness(.94)';
+    // A short pause between the steps of a print lets the page draw a frame.
+    const pause = () => new Promise(resolve => setTimeout(resolve, 0));
+    // A print made ahead of time (prepare()) stops at its next step when a card needs the
+    // queue. Its files are revoked.
+    const STOP = new Error('stopped');
+    const check = control => { if (control && control.stop) throw STOP; };
+    function revoke(list) {
+      for (const url of list) if (url) { URL.revokeObjectURL(url); urls.delete(url); }
+    }
+    const filesOf = mask => mask ? [...Object.values(mask).filter(v => typeof v === 'string'), ...Object.values(mask.baked || {})] : [];
+    async function bakeFaces(bitmap, tint, art, kind, control) {
+      const shift = deg => paint(paint(bitmap, [['none', 'source-over'], [`hue-rotate(${deg}deg) saturate(1.2)`, 'color']]),
+        [[INK, 'source-over'], ['none', 'destination-in', art]]);
+      const faces = {
+        'ink': () => paint(bitmap, [[INK, 'source-over']]),
+        'shift-a': () => shift(-25), 'shift-b': () => shift(25),
+        'shine': () => paint(bitmap, [['saturate(1.6) brightness(.45)', 'source-over']]),
+        'frame': () => paint(bitmap, [['saturate(1.3) brightness(.56)', 'source-over']]),
+      };
+      // R prints: the faint edge of the band, from the tint image.
+      if (kind === 'rare') faces.edge = () => paint(tint, [['hue-rotate(60deg) saturate(.55) brightness(.34)', 'source-over'], ['none', 'destination-in', art]]);
+      // Each face is drawn in its own step. The encodes run together, so the faces are ready sooner.
+      const names = Object.keys(faces), pending = [], type = await faceFormat();
+      try {
+        for (const name of names) { check(control); pending.push(blobUrl(faces[name](), ...type)); await pause(); }
+      } catch (e) { revoke(await Promise.all(pending)); throw e; }
+      const list = await Promise.all(pending);
+      return list.every(Boolean) ? Object.fromEntries(names.map((name, i) => [name, list[i]])) : null;
+    }
+    const BAKED = ['ink', 'shift-a', 'shift-b', 'shine', 'frame', 'edge'];
+    async function buildMasks(bitmap, kind, control) {
       const W = bitmap.width, Hh = bitmap.height;
       if (!W || !Hh) return null;
+      check(control);
       const c = canvas(W, Hh), ctx = c.getContext('2d', {willReadFrequently: true});
       ctx.drawImage(bitmap, 0, 0);
       const out = H.masks(ctx.getImageData(0, 0, W, Hh).data, W, Hh, kind);
-      const field = await maskUrl(out.field), line = out.line ? await maskUrl(out.line) : null;
-      return field ? {field, line} : null;
+      await pause();
+      check(control);
+      const files = {
+        field: maskUrl(out.field), line: out.line && maskUrl(out.line), texture: out.texture && maskUrl(out.texture),
+        tint: out.tint && pngUrl(out.tint.width, out.tint.height, out.tint.rgba, 4),
+        glow: out.tint && maskUrl({...out.tint, alpha: out.tint.glow}),
+        // Where the ink has little colour, the neutral mask takes the colour out of the light.
+        neutral: out.tint && maskUrl({...out.tint, alpha: out.tint.alpha.map(a => 255 - a)}),
+        shape: maskUrl(out.shape), rim: out.rim && maskUrl(out.rim), frame: out.frame && maskUrl(out.frame),
+      };
+      const names = Object.keys(files), made = Promise.all(names.map(name => files[name] || null));
+      let baked = null;
+      try {
+        await pause();
+        if (out.tint) baked = await bakeFaces(bitmap, imageCanvas(out.tint), alphaCanvas(out.art), kind, control);
+      } catch (e) { revoke(await made); throw e; }
+      const list = await made, mask = Object.fromEntries(names.map((name, i) => [name, list[i]]));
+      return !out.tint || baked ? {...mask, baked} : null;
     }
-    const maskCache = new Map();
-    let queue = Promise.resolve();
-    function maskFor(face, kind) {
+    // maskCache holds each print's job, and built holds the masks of each finished job, so a
+    // print shown again gets its finish in the same frame.
+    const maskCache = new Map(), built = new Map();
+    // Prints made ahead of time (prepare()) that no card used yet, oldest first: key -> control.
+    const prepared = new Map();
+    let queue = Promise.resolve(), running = null;
+    function maskFor(face, kind, ahead = false) {
       const key = `${kind} ${face}`;
+      if (!ahead) {
+        // A card uses a print made ahead, and stops any other that is not made yet.
+        const early = prepared.get(key);
+        prepared.delete(key);
+        if (early && early.stop) maskCache.delete(key);
+        for (const [other, control] of prepared) if (!built.has(other)) control.stop = true;
+      }
       if (!maskCache.has(key)) {
+        const control = ahead ? {stop: false} : null;
+        if (control) prepared.set(key, control);
         // One print at a time, 16 ms apart, keeps mask work off the board's busy frames.
-        const job = queue.then(() => pixels(face))
-          .then(bitmap => bitmap ? buildMasks(bitmap, kind).finally(() => bitmap.close && bitmap.close()) : null)
-          .catch(() => null);
+        const job = queue.then(() => { running = key; check(control); return pixels(face); })
+          .then(bitmap => bitmap ? buildMasks(bitmap, kind, control).finally(() => bitmap.close && bitmap.close()) : null)
+          .catch(() => null)
+          .then(mask => {
+            if (running === key) running = null;
+            if (maskCache.get(key) !== job) revoke(filesOf(mask));
+            else if (control && control.stop && !mask) { maskCache.delete(key); prepared.delete(key); }
+            else {
+              if (control) control.stop = false;
+              built.set(key, mask);
+            }
+            return mask;
+          });
         queue = job.then(() => new Promise(resolve => setTimeout(resolve, 16)));
         maskCache.set(key, job);
       }
@@ -244,19 +452,80 @@
     function applyMask(node, mask) {
       setVar(node, '--cbl-holo-mask-field', `url("${mask.field}")`);
       setVar(node, '--cbl-holo-mask-line', mask.line ? `url("${mask.line}")` : 'none');
+      setVar(node, '--cbl-holo-mask-texture', mask.texture ? `url("${mask.texture}")` : 'none');
+      // R and LR light in the colour of each ink.
+      setVar(node, '--cbl-holo-mask-tint', mask.tint ? `url("${mask.tint}")` : 'none');
+      setVar(node, '--cbl-holo-mask-glow', mask.glow ? `url("${mask.glow}")` : 'none');
+      setVar(node, '--cbl-holo-mask-neutral', mask.neutral ? `url("${mask.neutral}")` : 'none');
+      setVar(node, '--cbl-holo-mask-shape', `url("${mask.shape}")`);
+      setVar(node, '--cbl-holo-mask-rim', mask.rim ? `url("${mask.rim}")` : 'none');
+      setVar(node, '--cbl-holo-mask-frame', mask.frame ? `url("${mask.frame}")` : 'none');
+      for (const name of BAKED) setVar(node, `--cbl-holo-baked-${name}`, mask.baked && mask.baked[name] ? `url("${mask.baked[name]}")` : 'none');
       setAttr(node, 'data-cbl-holo-mask', true, 'ready');
     }
+    let waiting = 0;
     function requestMask(node, face, value) {
-      const kind = H.family(value);
+      const kind = H.maskKind(value);
       if (kind === 'gloss' || !face) return;
-      ensureTextures();
-      maskFor(face, kind).then(mask => {
-        if (!node.isConnected || node.getAttribute('data-cbl-holo') !== value || faces.get(node) !== face) return;
+      // The finish shows when its masks and textures are all ready, as one change.
+      needed = true;
+      const show = mask => {
         if (mask) { masks.set(node, mask); applyMask(node, mask); }
-        // An arrival sweep waits for the masks, so it shows the real finish.
+        // An arrival sweep waits for the masks, so it shows the real finish; any other card
+        // that waited fades its finish in.
         motion.ready(node, now());
+        motion.fade(node, now());
         schedule();
-      }).catch(onError);
+      };
+      const key = `${kind} ${face}`, job = maskFor(face, kind);
+      if (built.has(key) && texturesReady && (kind !== 'legend' || linesReady)) { show(built.get(key)); return; }
+      // Until then the finish stays hidden: the plain art shows, not a finish without its masks.
+      motion.hide(node, lampOf(node));
+      write(node);
+      waiting++;
+      Promise.all([job, ensureTextures(), kind === 'legend' && ensureLines()]).then(([mask]) => {
+        if (!node.isConnected || faces.get(node) !== face) return;
+        // The same face with another finish (no new masks) shows that finish now.
+        if (node.getAttribute('data-cbl-holo') !== value) { motion.fade(node, now()); schedule(); return; }
+        show(mask);
+      }).catch(onError).finally(() => { waiting--; });
+    }
+
+    // ---- Prints made ahead of time -------------------------------------------------------------
+
+    // While the page is still, the foil prints it shows on screen (a deck list, the deck
+    // builder's grid) get their masks, one at a time, so a card opened from there shows its
+    // finish at once. A card that needs the queue stops this work (maskFor()). Each print
+    // blocks the page for a moment (its mask step cannot be cut), so one starts only when the
+    // page is idle and STILL_MS after the last press, wheel or scroll. At most PREPARED prints
+    // that no card used stay in memory (about 1.6 MB each at 600 x 838). Then the work stops:
+    // a print is never removed to make room, so a scroll through a long list costs at most
+    // PREPARED prints, each read one time.
+    const PREPARED = 12, STILL_MS = 1000;
+    let preparing = false, moved = -Infinity;
+    const still = () => { moved = now(); };
+    for (const type of ['pointerdown', 'wheel', 'scroll']) win.addEventListener(type, still, {capture: true, passive: true});
+    const later = typeof win.requestIdleCallback === 'function' ? fn => win.requestIdleCallback(fn) : fn => setTimeout(fn, 500);
+    function prepare() {
+      if (preparing || cleared || prepared.size >= PREPARED) return;
+      preparing = true;
+      later(() => { preparing = false; try { prepareNext(); } catch (e) { onError(e); } });
+    }
+    function prepareNext() {
+      const db = win.__cardByCode;
+      if (cleared || !db || doc.hidden || prepared.size >= PREPARED) return;
+      const wait = moved + STILL_MS - now();
+      if (wait > 0 || waiting || running) { setTimeout(prepare, Math.max(wait, 500)); return; }
+      for (const img of doc.images) {
+        const face = source(img), code = H.printOf(face);
+        if (!code || !img.complete || !img.naturalWidth) continue;
+        const value = H.finish(code, db), kind = H.maskKind(value);
+        if (!H.foil(value) || kind === 'gloss' || maskCache.has(`${kind} ${face}`)) continue;
+        const r = img.getBoundingClientRect();
+        if (r.width < 24 || r.bottom < 0 || r.right < 0 || r.top > win.innerHeight || r.left > win.innerWidth) continue;
+        maskFor(face, kind, true).then(prepare);
+        return;
+      }
     }
 
     // ---- Where a card is on screen ----------------------------------------------------------------
@@ -376,7 +645,7 @@
         box = doc.createElement('span');
         box.className = 'cbl-holo';
         box.setAttribute('aria-hidden', 'true');
-        for (const part of ['field', 'line', 'glare']) {
+        for (const part of ['ink', 'shine', 'field', 'line', 'glare', 'keep']) {
           const layer = doc.createElement('i');
           layer.className = `cbl-holo-${part}`;
           box.append(layer);
@@ -404,7 +673,6 @@
         setVar(node, '--cbl-holo-top', `${img.offsetTop}px`);
         setVar(node, '--cbl-holo-width', `${width}px`);
         setVar(node, '--cbl-holo-height', `${img.offsetHeight}px`);
-        setVar(node, '--cbl-holo-radius', style.borderRadius || '0px');
       }
       setVar(node, '--cbl-holo-k', Math.min(1.6, Math.max(0.8, width / TEXTURE_WIDTH)).toFixed(3));
       setVar(node, '--cbl-holo-p', `${Math.round(Math.max(1, width) * PERSPECTIVE[kind in PERSPECTIVE ? kind : 'board'])}px`);
@@ -490,6 +758,16 @@
         setAttr(node, 'data-cbl-holo-mask', false);
         setVar(node, '--cbl-holo-mask-field', 'none');
         setVar(node, '--cbl-holo-mask-line', 'none');
+        setVar(node, '--cbl-holo-mask-texture', 'none');
+        setVar(node, '--cbl-holo-mask-tint', 'none');
+        setVar(node, '--cbl-holo-mask-glow', 'none');
+        setVar(node, '--cbl-holo-mask-neutral', 'none');
+        setVar(node, '--cbl-holo-mask-shape', 'none');
+        setVar(node, '--cbl-holo-mask-rim', 'none');
+        setVar(node, '--cbl-holo-mask-frame', 'none');
+        for (const name of BAKED) setVar(node, `--cbl-holo-baked-${name}`, 'none');
+        // The ink and shine layers of R and LR prints draw the face again, with richer colour.
+        setVar(node, '--cbl-holo-face', `url(${JSON.stringify(face)})`);
         // Cards arriving together sweep in a short cascade; their finish stays hidden until
         // the sweep fades it in. Only arrivals sweep: the same face shown again never does,
         // but a new element for it (a Pilot pairing rebuilds the Unit as a stack) keeps the
@@ -581,6 +859,7 @@
       for (const node of seen) {
         if (H.foil(node.getAttribute('data-cbl-holo')) && !motion.has(node)) { motion.state(node, lampOf(node)); write(node); }
       }
+      prepare();
     }
 
     // The lifted hand card (the site has no drag copy) catches the lamp where it is.
@@ -669,7 +948,12 @@
 
     // Explicit light for presentation tools such as the showcase.
     const api = {
-      sync() { cleared = false; sync(); },
+      sync() {
+        cleared = false;
+        sync();
+        // Make the textures before the first foil card needs them.
+        if (win.__cardByCode) { ensureTextures(); ensureLines(); }
+      },
       finish: code => H.finish(code, win.__cardByCode),
       tilt(node, x, y) {
         if (!marked.has(node)) return;
@@ -685,7 +969,9 @@
         schedule();
       },
       values: node => motion.values(node),
-      masks: face => maskCache.get(`holo ${face}`) || maskCache.get(`parallel ${face}`) || maskCache.get(`special ${face}`) || null,
+      // The file type of the filtered faces: ['image/webp', 1] or ['image/png'].
+      faceType: () => faceFormat(),
+      masks: face => ['holo', 'rare', 'legend', 'parallel', 'special'].map(kind => maskCache.get(`${kind} ${face}`)).find(Boolean) || null,
       // Removes every finish, rule and texture, and revokes their URLs. Slots keep their
       // last arrived face, so the next sync() replays no sweep. Nothing lights again until it.
       clear() {
@@ -700,7 +986,12 @@
         rules.clear();
         stages.clear();
         maskCache.clear();
-        textures = null;
+        built.clear();
+        prepared.clear();
+        textures = lines = null;
+        texturesReady = linesReady = false;
+        epoch++;
+        needed = false;
         for (const url of urls) URL.revokeObjectURL(url);
         urls.clear();
       },

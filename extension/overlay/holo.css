@@ -3,24 +3,34 @@
    and textures come from foil.js's own stylesheet rules; the defaults here are the resting
    lamp. Each lit face holds one .cbl-holo box whose layers sit on its art, blend with it and
    stay below everything the site and the card info overlay draw on the card:
+   .cbl-holo-ink    the face again with richer colour (R and LR prints)
+   .cbl-holo-shine  the face again, brighter colour at the light angle (R and LR prints)
    .cbl-holo-field  holo surface, masked to the print's foil-bearing areas
-   .cbl-holo-line   metallic line art / frame elements (+ and ++ prints)
+   .cbl-holo-line   metallic line art / frame elements (R, LR, + and ++ prints)
    .cbl-holo-glare  the gloss coating's specular highlight (every card)
+   .cbl-holo-keep   the printed hue of the frame, its tags and the text (R and LR prints)
 
    Finishes observed on real cards (pack footage and official scans):
    C/U   matte stock; only the gloss highlight.
-   R/LR  textured holo: a fine frosted grain carrying spectral bands that sweep with the
-         tilt on light areas; dark ink stays dark; LR adds glints and a strong white hotspot
-         at grazing angles.
-   +     dense multicolour pinpoint glitter over the art; silver numerals, name, tab and
-         frame lines flash rainbow metal (densest on LR+).
+   R     holo under the whole face: dark and mid-tone ink turns vivid in its own colour at the light
+         angle; white ink stays white; the frame glows in its own colour.
+   LR    a soft sheen with fine fingerprint lines on the art; the frame glows in its own colour
+         (a blue frame goes bright blue at the light), the black boxes stay black and the text
+         is not a mirror. No rainbow rings: they looked bad as the card turned.
+   R, LR the card glows in its own colours at the light angle and does not reflect a white light;
+         the colours shift a little in hue as the card turns. Black stays black and white stays
+         white: a white light looked bland and blinding, and a light in one colour looked wrong
+         on cards of other colours.
+   +     ink printed over a silver mirror: coloured ink stays vivid; pale areas, white text and
+         the grey box faces go slate grey away from the light and near-white in a narrow flash;
+         the art has a fine embossed relief, the frame and text are a plain mirror.
    ++    pastel art over a fine mosaic-cell holo; the gold line art, logo, frame lines and
          tab turn into vivid rainbow metal.
-   P     promo textured holo with glints. */
+   P     promo textured holo: spectral bands on light areas, a frosted grain and glints. */
 :where([data-cbl-holo]) {
   --cbl-holo-x: 50%; --cbl-holo-y: 30%; --cbl-holo-fx: .5; --cbl-holo-fy: .3; --cbl-holo-c: .4; --cbl-holo-o: 0;
   --cbl-holo-rx: 0deg; --cbl-holo-ry: 0deg; --cbl-holo-sweep-o: 0; --cbl-holo-arrive: 1;
-  --cbl-holo-mask-field: none; --cbl-holo-mask-line: none; --cbl-holo-mask-size: 100% 100%; --cbl-holo-mask-position: 50% 50%;
+  --cbl-holo-mask-field: none; --cbl-holo-mask-line: none; --cbl-holo-mask-texture: none; --cbl-holo-mask-tint: none; --cbl-holo-mask-glow: none; --cbl-holo-mask-neutral: none; --cbl-holo-mask-shape: none; --cbl-holo-mask-rim: none; --cbl-holo-mask-frame: none; --cbl-holo-mask-size: 100% 100%; --cbl-holo-mask-position: 50% 50%;
   /* Texture scale (tiles and parallax at 155 px faces) and perspective, per card. */
   --cbl-holo-k: 1; --cbl-holo-p: 560px;
   /* Colour pools around the light and curves away from it, as diffraction foil does under
@@ -30,11 +40,12 @@
   --cbl-holo-near: .55; --cbl-holo-far: .22;
   --cbl-holo-rest: .25; --cbl-holo-active: .85; --cbl-holo-line-rest: .45; --cbl-holo-line-active: .82;
   --cbl-holo-gloss: .42; --cbl-holo-graze: .6; --cbl-holo-tint: 0,0%,100%;
-  --cbl-holo-glitter-a: 0; --cbl-holo-glitter-b: 0; --cbl-holo-glint: 0;
+  --cbl-holo-relief: 0; --cbl-holo-glint: 0;
 }
 /* The context multiplier: the room (the showcase's lighting switch), art the site or the
    overlay fades (rested Units, unplayable hand cards) and the armed hand card on touch. */
 [data-cbl-holo] {
+  --cbl-holo-corner: 4.2% / 3%;
   --cbl-holo-light: calc(var(--cbl-holo-room, 1) * var(--cbl-holo-fade, 1) * var(--cbl-holo-boost, 1));
   /* Blend modes mix the foil with this card's art only, never with the board behind it. */
   isolation: isolate;
@@ -45,9 +56,14 @@
   width: var(--cbl-holo-width, 100%); height: var(--cbl-holo-height, 100%);
   /* No z-index, transform or clip here: a box with its own stacking context would blend its
      layers with nothing and paint the foil over the card as a rainbow veil. */
-  border-radius: var(--cbl-holo-radius, 2px);
+  border-radius: var(--cbl-holo-corner);
   pointer-events: none;
 }
+/* The scans have a larger round corner than the site's card boxes, so the dark box showed as
+   a square behind each corner of a card. A lit card, its face and its foil take
+   the corner of the print: 25 px on the 600 x 838 scan. The :not() lifts the rule over the
+   site's own corner rules. */
+[data-cbl-holo]:not(#cbl-holo-none), [data-cbl-holo]:not(#cbl-holo-none) > img { border-radius: var(--cbl-holo-corner); }
 .cbl-holo > i {
   /* Directly on the art (z-index 1, after it), so each layer blends with the print, under
      the site's stats, badges, reticles and the card info overlay (z-index 15 and up). */
@@ -130,9 +146,9 @@ html.loz-arm-mode .hand-row[data-hand-player="p1"] > .card.loz-armed[data-cbl-ho
   -webkit-mask-size: var(--cbl-holo-mask-size), 100% 100%; mask-size: var(--cbl-holo-mask-size), 100% 100%;
   -webkit-mask-position: var(--cbl-holo-mask-position), 0 0; mask-position: var(--cbl-holo-mask-position), 0 0;
   -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-composite: source-in; mask-composite: intersect;
-  /* Metal ink: a saturated fine spectrum over neutral grey, recoloured into the line art;
-     glints ride on top. */
-  background-color: hsl(0,0%,50%); background-image: var(--cbl-holo-fine);
+  /* Metal ink over neutral grey, recoloured into the line art: polished silver on + prints, a
+     fine spectrum on ++ prints. Glints ride on top. */
+  background-color: hsl(0,0%,50%); background-image: var(--cbl-holo-metal, var(--cbl-holo-fine));
   mix-blend-mode: hard-light;
 }
 [data-cbl-holo-mask="ready"]:is([data-cbl-holo$="-p"], [data-cbl-holo$="-pp"]) > .cbl-holo > .cbl-holo-line::after {
@@ -147,6 +163,16 @@ html.loz-arm-mode .hand-row[data-hand-player="p1"] > .card.loz-armed[data-cbl-ho
   mix-blend-mode: overlay;
   opacity: calc((var(--cbl-holo-rest) * .35 + var(--cbl-holo-gloss) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o) * .6) * (.8 + var(--cbl-holo-graze) * var(--cbl-holo-c) * var(--cbl-holo-c))) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1));
 }
+/* The scans have round corners. Once the pixels are read, the gloss keeps to the card's shape. */
+[data-cbl-holo-mask="ready"] > .cbl-holo > .cbl-holo-glare {
+  -webkit-mask-image: var(--cbl-holo-mask-shape); mask-image: var(--cbl-holo-mask-shape);
+  -webkit-mask-size: var(--cbl-holo-mask-size); mask-size: var(--cbl-holo-mask-size);
+  -webkit-mask-position: var(--cbl-holo-mask-position); mask-position: var(--cbl-holo-mask-position);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
+
+/* The ink, shine and keep layers: off, except on R and LR prints. */
+.cbl-holo > :is(.cbl-holo-ink, .cbl-holo-shine, .cbl-holo-keep) { display: none; }
 
 /* ---------- C / U: plain stock ---------- */
 :where([data-cbl-holo="c"], [data-cbl-holo="u"]) { --cbl-holo-rest: 0; --cbl-holo-gloss: .5; }
@@ -155,48 +181,259 @@ html.loz-arm-mode .hand-row[data-hand-player="p1"] > .card.loz-armed[data-cbl-ho
   background-image: radial-gradient(farthest-corner ellipse at var(--cbl-holo-x) var(--cbl-holo-y), hsla(0,0%,100%,.34) 0%, hsla(0,0%,100%,.1) 50%, hsla(0,0%,0%,.14) 100%);
 }
 
-/* ---------- R / LR / P: textured holo ---------- */
-:where([data-cbl-holo="r"]) { --cbl-holo-rest: .2; --cbl-holo-active: .72; --cbl-holo-near: .5; --cbl-holo-far: .2; --cbl-holo-gloss: .4; --cbl-holo-graze: .5; }
-:where([data-cbl-holo="lr"]) { --cbl-holo-rest: .22; --cbl-holo-active: .72; --cbl-holo-near: .6; --cbl-holo-far: .26; --cbl-holo-gloss: .44; --cbl-holo-graze: .9; --cbl-holo-tint: 195,100%,96%; --cbl-holo-glint: .55; }
+/* ---------- P: textured holo ---------- */
 :where([data-cbl-holo="p"]) { --cbl-holo-rest: .22; --cbl-holo-active: .78; --cbl-holo-gloss: .42; --cbl-holo-graze: .6; --cbl-holo-glint: .7; }
-:is([data-cbl-holo="r"], [data-cbl-holo="lr"], [data-cbl-holo="p"]) > .cbl-holo > .cbl-holo-field {
+[data-cbl-holo="p"] > .cbl-holo > .cbl-holo-field {
   background-image: var(--cbl-holo-spectrum);
   mix-blend-mode: color-dodge; filter: brightness(.72) contrast(1.3) saturate(1);
 }
-:is([data-cbl-holo="r"], [data-cbl-holo="lr"], [data-cbl-holo="p"]) > .cbl-holo > .cbl-holo-field::before {
+[data-cbl-holo="p"] > .cbl-holo > .cbl-holo-field::before {
   background-image: var(--cbl-holo-tex-grain, none); background-size: calc(256px * var(--cbl-holo-k)) calc(256px * var(--cbl-holo-k));
   background-position: calc(var(--cbl-holo-fx) * -40px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -30px * var(--cbl-holo-k));
   mix-blend-mode: overlay;
 }
-:is([data-cbl-holo="lr"], [data-cbl-holo="p"]) > .cbl-holo > .cbl-holo-field::after {
+[data-cbl-holo="p"] > .cbl-holo > .cbl-holo-field::after {
   background-image: var(--cbl-holo-tex-glint, none); background-size: calc(256px * var(--cbl-holo-k)) calc(256px * var(--cbl-holo-k));
   background-position: calc(var(--cbl-holo-fx) * 70px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * 52px * var(--cbl-holo-k));
   mix-blend-mode: screen; opacity: calc(var(--cbl-holo-glint) * (.45 + .55 * var(--cbl-holo-o)));
 }
 
-/* ---------- + parallels: pinpoint glitter and silver frame metal ---------- */
-:where([data-cbl-holo$="-p"]) {
-  --cbl-holo-rest: .28; --cbl-holo-active: .82; --cbl-holo-near: .6; --cbl-holo-far: .24; --cbl-holo-line-rest: .32;
-  --cbl-holo-gloss: .4; --cbl-holo-graze: .6; --cbl-holo-tint: 210,40%,97%;
-  --cbl-holo-glitter-a: .5; --cbl-holo-glitter-b: .25;
+/* ---------- R and LR: rich ink ---------- */
+/* The real R and LR cards are printed with deeper, more saturated ink than the site's scans
+   show. The ink layer draws the face again with richer colour over the art, at every angle.
+   Faded art (rested Units, unplayable hand cards) stays faded, so there it is off. */
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink {
+  display: block;
+  background-image: var(--cbl-holo-face, none); background-repeat: no-repeat;
+  background-size: var(--cbl-holo-mask-size); background-position: var(--cbl-holo-mask-position);
+  filter: saturate(1.18) contrast(1.1) brightness(.94);
+  opacity: calc(var(--cbl-holo-ink, .8) * var(--cbl-holo-arrive) * clamp(0, (var(--cbl-holo-fade, 1) - .9) * 10, 1));
 }
-:where([data-cbl-holo="r-p"], [data-cbl-holo="p-p"]) { --cbl-holo-glitter-a: .8; --cbl-holo-glitter-b: .5; }
-:where([data-cbl-holo="lr-p"]) { --cbl-holo-rest: .3; --cbl-holo-active: .86; --cbl-holo-glitter-a: 1; --cbl-holo-glitter-b: .85; --cbl-holo-graze: .75; }
-[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field {
+/* Once the pixels are read, each R and LR layer that draws the face again shows a copy of the
+   face that foil.js made one time with the same filter (and, for the colour shift, the same
+   blend). A turning card then only moves masks: a CSS filter here would run again on each
+   frame. Keep the filters here equal to the ones in foil.js. */
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink {
+  background-image: var(--cbl-holo-baked-ink); filter: none;
+}
+/* The shine: at the light angle the foil under the ink reflects the ink's own colour, so the
+   colours get brighter and more vivid there, not white. Colour dodge of the face with itself
+   does that: each colour gets lighter in its own hue, and black stays dark. Once the pixels
+   are read, the glow mask keeps it to coloured ink: pale ink would only turn white. */
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-shine {
+  display: block;
+  background-image: var(--cbl-holo-face, none); background-repeat: no-repeat;
+  background-size: var(--cbl-holo-mask-size); background-position: var(--cbl-holo-mask-position);
+  filter: saturate(1.6) brightness(.45);
+  mix-blend-mode: color-dodge;
+  -webkit-mask-image: radial-gradient(ellipse 70% 55% at var(--cbl-holo-x) var(--cbl-holo-y), #000 0%, rgba(0,0,0,.6) 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 70% 55% at var(--cbl-holo-x) var(--cbl-holo-y), #000 0%, rgba(0,0,0,.6) 40%, transparent 100%);
+  opacity: calc(var(--cbl-holo-shine, .65) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o)) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1) * clamp(0, (var(--cbl-holo-fade, 1) - .9) * 10, 1));
+}
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-shine {
+  background-image: var(--cbl-holo-baked-shine); filter: none;
+  -webkit-mask-image: var(--cbl-holo-mask-glow), radial-gradient(ellipse 70% 55% at var(--cbl-holo-x) var(--cbl-holo-y), #000 0%, rgba(0,0,0,.6) 40%, transparent 100%);
+  mask-image: var(--cbl-holo-mask-glow), radial-gradient(ellipse 70% 55% at var(--cbl-holo-x) var(--cbl-holo-y), #000 0%, rgba(0,0,0,.6) 40%, transparent 100%);
+  -webkit-mask-size: var(--cbl-holo-mask-size), 100% 100%; mask-size: var(--cbl-holo-mask-size), 100% 100%;
+  -webkit-mask-position: var(--cbl-holo-mask-position), 0 0; mask-position: var(--cbl-holo-mask-position), 0 0;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-composite: source-in; mask-composite: intersect;
+}
+/* The holo: the print's own colours shift a little along the colour wheel, in soft diagonal
+   bands that move with the light, one band warmer and the next cooler, as the foil under the
+   ink does. The colour blend keeps the lightness of the ink, so the card never gets whiter, and
+   black, grey and white ink have no hue to shift: the card glows in its own colours and does
+   not reflect a white light. Once the pixels are read, only the art shifts: the frame and its
+   tags (cost box, type tab) keep their printed colour. */
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink::before,
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink::after {
+  background-image: var(--cbl-holo-face, none); background-repeat: no-repeat;
+  background-size: var(--cbl-holo-mask-size); background-position: var(--cbl-holo-mask-position);
+  mix-blend-mode: color;
+  -webkit-mask-size: 260% 260%; mask-size: 260% 260%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: calc(var(--cbl-holo-fx) * 100%) calc(var(--cbl-holo-fy) * 100%); mask-position: calc(var(--cbl-holo-fx) * 100%) calc(var(--cbl-holo-fy) * 100%);
+  opacity: calc(var(--cbl-holo-shift, .7) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o)));
+}
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink::before {
+  filter: hue-rotate(-25deg) saturate(1.2);
+  -webkit-mask-image: linear-gradient(115deg, transparent 0%, #000 10%, transparent 20%, transparent 35%, #000 45%, transparent 55%, transparent 70%, #000 80%, transparent 90%);
+  mask-image: linear-gradient(115deg, transparent 0%, #000 10%, transparent 20%, transparent 35%, #000 45%, transparent 55%, transparent 70%, #000 80%, transparent 90%);
+}
+:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink::after {
+  filter: hue-rotate(25deg) saturate(1.2);
+  -webkit-mask-image: linear-gradient(115deg, transparent 17.5%, #000 27.5%, transparent 37.5%, transparent 52.5%, #000 62.5%, transparent 72.5%, transparent 87.5%, #000 97.5%, transparent 100%);
+  mask-image: linear-gradient(115deg, transparent 17.5%, #000 27.5%, transparent 37.5%, transparent 52.5%, #000 62.5%, transparent 72.5%, transparent 87.5%, #000 97.5%, transparent 100%);
+}
+/* The made copies already hold the colour blend over the face and the ink filter, so they
+   cover the ink face with no blend. They are transparent outside the art. */
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink::before { background-image: var(--cbl-holo-baked-shift-a); filter: none; mix-blend-mode: normal; }
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-ink::after { background-image: var(--cbl-holo-baked-shift-b); filter: none; mix-blend-mode: normal; }
+/* The frame glows in its own colour at the light: colour dodge of the face with itself, as
+   the shine, over the whole frame. A pink frame goes vivid pink and a blue frame bright blue,
+   while white stays white and the black boxes stay black. Away from the light it fades out, so
+   the frame of the site's scans shows as printed. */
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-line {
+  display: block;
+  --cbl-holo-near: .85; --cbl-holo-far: .3;
+  opacity: calc((var(--cbl-holo-line-rest) + (var(--cbl-holo-line-active) - var(--cbl-holo-line-rest)) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o))) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1) * clamp(0, (var(--cbl-holo-fade, 1) - .9) * 10, 1));
+  -webkit-mask-image: var(--cbl-holo-mask-line), var(--cbl-holo-light-mask); mask-image: var(--cbl-holo-mask-line), var(--cbl-holo-light-mask);
+  -webkit-mask-size: var(--cbl-holo-mask-size), 100% 100%; mask-size: var(--cbl-holo-mask-size), 100% 100%;
+  -webkit-mask-position: var(--cbl-holo-mask-position), 0 0; mask-position: var(--cbl-holo-mask-position), 0 0;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-composite: source-in; mask-composite: intersect;
+  /* The face with saturate(1.3) brightness(.56), made in foil.js. */
+  background-image: var(--cbl-holo-baked-frame); background-repeat: no-repeat;
+  background-size: var(--cbl-holo-mask-size); background-position: var(--cbl-holo-mask-position);
+  mix-blend-mode: color-dodge;
+}
+/* The edge of the card catches the light: on the side near the light, the thin border lights up
+   in its own colour as the card turns. Black stays black, as the frame layer dodges it. */
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-line::after {
+  background-image: radial-gradient(ellipse 75% 60% at var(--cbl-holo-x) var(--cbl-holo-y), hsla(0,0%,100%,.7) 0%, hsla(0,0%,100%,.35) 45%, hsla(0,0%,100%,0) 85%);
+  -webkit-mask-image: var(--cbl-holo-mask-rim); mask-image: var(--cbl-holo-mask-rim);
+  -webkit-mask-size: var(--cbl-holo-mask-size); mask-size: var(--cbl-holo-mask-size);
+  -webkit-mask-position: var(--cbl-holo-mask-position); mask-position: var(--cbl-holo-mask-position);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  opacity: max(var(--cbl-holo-o), var(--cbl-holo-sweep-o));
+}
+
+/* The frame, its tags (cost box, type tab, ID tab) and the text keep their printed hue: the
+   light makes them lighter, never another colour (a pink tag must not go purple at the light).
+   Colour dodge brightens each colour channel at its own rate, which turns the hue, so
+   this top layer puts the hue of the ink face back. The hue blend keeps the lightness and the
+   saturation that the light gave. */
+[data-cbl-holo-mask="ready"]:is([data-cbl-holo="r"], [data-cbl-holo="lr"]) > .cbl-holo > .cbl-holo-keep {
+  display: block;
+  background-image: var(--cbl-holo-baked-ink); background-repeat: no-repeat;
+  background-size: var(--cbl-holo-mask-size); background-position: var(--cbl-holo-mask-position);
+  mix-blend-mode: hue;
+  -webkit-mask-image: var(--cbl-holo-mask-frame); mask-image: var(--cbl-holo-mask-frame);
+  -webkit-mask-size: var(--cbl-holo-mask-size); mask-size: var(--cbl-holo-mask-size);
+  -webkit-mask-position: var(--cbl-holo-mask-position); mask-position: var(--cbl-holo-mask-position);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  opacity: calc(var(--cbl-holo-arrive) * clamp(0, (var(--cbl-holo-fade, 1) - .9) * 10, 1));
+}
+
+/* ---------- R: holo under the whole face, in the colour of each ink ---------- */
+/* Real R cards: the foil is under the whole face, frame and text box too.
+   Dark and mid-tone ink turns from deep indigo to vivid blue at the light; white ink and red
+   or orange ink keep their colour. The colour is one wide band: silver blue in the flash, then
+   blue, violet and a faint pink and gold edge. The surface is smooth, with no glints.
+   The reference card is blue. On every card the band takes the hue of the ink under it from the
+   tint image: blue ink glows blue, red ink red. The neutral mask takes the colour out of the
+   band on black, grey and white ink, so a black box with a faint red cast stays neutral. The
+   field mask sets how much each ink glows (holo.js). Without the tint image (masks not read
+   yet), the band is the blue of the reference card. */
+:where([data-cbl-holo="r"]) {
+  --cbl-holo-rest: .14; --cbl-holo-active: .62; --cbl-holo-near: .8; --cbl-holo-far: .32; --cbl-holo-gloss: .08; --cbl-holo-graze: .5;
+  --cbl-holo-line-rest: .15; --cbl-holo-line-active: 1;
+}
+[data-cbl-holo="r"] > .cbl-holo > .cbl-holo-field {
+  /* Colour dodge of the dimmed band: dark ink glows in its own colour, black stays black and
+     white stays white, so the light never washes the card out. */
+  background-image: var(--cbl-holo-mask-tint), var(--cbl-holo-mask-neutral),
+    radial-gradient(ellipse 125% 105% at var(--cbl-holo-x) var(--cbl-holo-y), hsl(210,85%,48%) 0%, hsl(214,92%,43%) 10%, hsl(220,90%,37%) 24%, hsl(226,70%,34%) 38%, hsl(242,50%,33%) 50%, hsl(282,40%,29%) 60%, hsl(325,38%,26%) 68%, hsl(38,45%,21%) 75%, hsl(150,32%,14%) 82%, hsl(220,30%,7%) 100%);
+  background-size: var(--cbl-holo-mask-size), var(--cbl-holo-mask-size), 100% 100%; background-position: var(--cbl-holo-mask-position), var(--cbl-holo-mask-position), 0 0;
+  background-repeat: no-repeat; background-blend-mode: hue, saturation, normal;
+  filter: brightness(.52);
+  mix-blend-mode: color-dodge;
+}
+/* The faint edge of the band: each coloured ink turns 60deg on the colour wheel there (blue to
+   violet, red to gold, green to cyan), as the blue band of a real R card has a violet and pink edge.
+   Black, grey, white and pale ink get no edge (the glow mask). */
+[data-cbl-holo-mask="ready"][data-cbl-holo="r"] > .cbl-holo > .cbl-holo-field::after {
+  /* The tint image with hue-rotate(60deg) saturate(.55) brightness(.34), made in foil.js. */
+  background-image: var(--cbl-holo-baked-edge); background-size: var(--cbl-holo-mask-size); background-position: var(--cbl-holo-mask-position); background-repeat: no-repeat;
+  -webkit-mask-image: var(--cbl-holo-mask-glow), radial-gradient(ellipse 125% 105% at var(--cbl-holo-x) var(--cbl-holo-y), transparent 42%, #000 58%, #000 76%, transparent 92%);
+  mask-image: var(--cbl-holo-mask-glow), radial-gradient(ellipse 125% 105% at var(--cbl-holo-x) var(--cbl-holo-y), transparent 42%, #000 58%, #000 76%, transparent 92%);
+  -webkit-mask-size: var(--cbl-holo-mask-size), 100% 100%; mask-size: var(--cbl-holo-mask-size), 100% 100%;
+  -webkit-mask-position: var(--cbl-holo-mask-position), 0 0; mask-position: var(--cbl-holo-mask-position), 0 0;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-composite: source-in; mask-composite: intersect;
+}
+[data-cbl-holo="r"] > .cbl-holo > .cbl-holo-field::before {
+  background-image: var(--cbl-holo-tex-grain, none); background-size: calc(256px * var(--cbl-holo-k)) calc(256px * var(--cbl-holo-k));
+  mix-blend-mode: overlay; opacity: .1;
+}
+
+/* ---------- LR: silver sheen with fine fingerprint lines ---------- */
+/* Real LR cards: a broad silver-cyan sheen at the light angle, a little
+   darker and richer away from it. Fine lines bend into arcs and whorls across the art, dark ink
+   included. The blue frame and cost box glow bright blue at the light (the frame layer above).
+   No glints. Real cards also show a faint rainbow in narrow bands on the near-white areas, but
+   drawn as rings around the light it looked bad as the card turned, so the LR foil has no
+   rainbow.
+   The reference card is blue. On every card the sheen takes the hue of the ink under it (the tint
+   image), as on R cards, and it is kept soft so the card does not wash out. */
+:where([data-cbl-holo="lr"]) {
+  --cbl-holo-rest: .3; --cbl-holo-active: .5; --cbl-holo-near: .75; --cbl-holo-far: .45;
+  --cbl-holo-line-rest: .15; --cbl-holo-line-active: 1;
+  --cbl-holo-gloss: .07; --cbl-holo-graze: .6; --cbl-holo-tint: 195,30%,96%;
+}
+[data-cbl-holo="lr"] > .cbl-holo > .cbl-holo-field {
+  /* Hard light over neutral grey, kept close to grey: the sheen tints the ink in its own colour
+     more than it lights it, and it is a little dark away from the light. */
   background-color: hsl(0,0%,50%);
-  background-image: repeating-radial-gradient(ellipse 150% 115% at var(--cbl-holo-x) var(--cbl-holo-y), hsla(195,85%,60%,.22) 0%, hsla(250,80%,66%,.22) 7%, hsla(320,80%,64%,.22) 14%, hsla(30,85%,60%,.22) 21%, hsla(70,80%,58%,.22) 28%, hsla(150,75%,56%,.22) 35%, hsla(195,85%,60%,.22) 42%);
+  background-image: var(--cbl-holo-mask-tint), var(--cbl-holo-mask-neutral),
+    radial-gradient(ellipse 90% 75% at var(--cbl-holo-x) var(--cbl-holo-y), hsl(192,40%,56%) 0%, hsl(196,30%,54%) 20%, hsl(205,14%,51%) 42%, hsl(215,10%,46%) 70%, hsl(220,12%,43%) 100%);
+  background-size: var(--cbl-holo-mask-size), var(--cbl-holo-mask-size), 100% 100%; background-position: var(--cbl-holo-mask-position), var(--cbl-holo-mask-position), 0 0;
+  background-repeat: no-repeat; background-blend-mode: hue, saturation, normal;
   mix-blend-mode: hard-light;
 }
-/* Two glitter depths drift apart as the card turns, so grains flash on and off. */
-[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::before {
-  background-image: var(--cbl-holo-tex-glitter, none); background-size: calc(192px * var(--cbl-holo-k)) calc(192px * var(--cbl-holo-k));
-  background-position: calc(var(--cbl-holo-fx) * -38px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -30px * var(--cbl-holo-k));
-  opacity: var(--cbl-holo-glitter-a);
+/* The lines are fixed to the card; only the light on them moves. On small board cards the
+   lines are too fine for the screen, so they fade out there. */
+[data-cbl-holo="lr"] > .cbl-holo > .cbl-holo-field::before {
+  background-image: var(--cbl-holo-tex-lines, none); background-size: calc(384px * max(var(--cbl-holo-k), .9)) calc(384px * max(var(--cbl-holo-k), .9));
+  mix-blend-mode: overlay; opacity: calc(.75 * min(1, var(--cbl-holo-k) * 1.2));
 }
-[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::after {
-  background-image: var(--cbl-holo-tex-glitter-2, none); background-size: calc(160px * var(--cbl-holo-k)) calc(160px * var(--cbl-holo-k));
-  background-position: calc(var(--cbl-holo-fx) * 54px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * 44px * var(--cbl-holo-k));
-  opacity: var(--cbl-holo-glitter-b);
+/* ---------- + parallels: ink over a silver mirror ---------- */
+/* Real R+ and LR+ cards: coloured and dark ink keep their colour at every
+   angle. Pale areas, white text and the grey faces of the boxes are a mirror: slate grey away
+   from the light, near-white in a narrow flash at the light angle. The stock has a fine
+   embossed pebble relief on the art; the frame, its boxes and tabs, the
+   name and the effect text are a plain mirror with no texture. */
+:where([data-cbl-holo$="-p"]) {
+  --cbl-holo-rest: .35; --cbl-holo-active: .95; --cbl-holo-near: .7; --cbl-holo-far: .3;
+  --cbl-holo-line-rest: .55; --cbl-holo-line-active: 1;
+  --cbl-holo-gloss: .35; --cbl-holo-graze: .6; --cbl-holo-tint: 0,0%,100%;
+  --cbl-holo-relief: .7;
+  /* A faint rainbow edge around the flash, as a hint of the foil's diffraction. */
+  --cbl-holo-prism: radial-gradient(ellipse 80% 62% at var(--cbl-holo-x) var(--cbl-holo-y), hsla(195,85%,58%,0) 8%, hsla(195,85%,58%,.45) 15%, hsla(260,75%,64%,.42) 22%, hsla(325,80%,62%,.42) 29%, hsla(40,90%,58%,.42) 36%, hsla(95,70%,52%,.38) 43%, hsla(170,75%,50%,.3) 50%, hsla(170,75%,50%,0) 58%);
+  /* Mirror light for hard-light: white in the flash (brightens), grey away from it (darkens). */
+  --cbl-holo-mirror: var(--cbl-holo-prism), radial-gradient(ellipse 70% 55% at var(--cbl-holo-x) var(--cbl-holo-y), hsl(210,8%,97%) 0%, hsl(210,5%,86%) 14%, hsl(0,0%,62%) 30%, hsl(220,5%,42%) 52%, hsl(220,6%,34%) 100%);
+  /* Polished metal: a bright spot, warm grey around it and one moving streak. The spot stays
+     below white, so white numbers stay brighter than the grey box behind them. */
+  --cbl-holo-metal: var(--cbl-holo-prism), linear-gradient(105deg, transparent calc(var(--cbl-holo-fx) * 120% - 24%), hsla(0,0%,100%,.7) calc(var(--cbl-holo-fx) * 120% - 10%), transparent calc(var(--cbl-holo-fx) * 120% + 4%)),
+    radial-gradient(ellipse 85% 65% at var(--cbl-holo-x) var(--cbl-holo-y), hsl(205,8%,90%) 0%, hsl(205,8%,84%) 14%, hsl(35,6%,72%) 30%, hsl(215,6%,52%) 55%, hsl(220,6%,45%) 100%);
+}
+:where([data-cbl-holo="r-p"], [data-cbl-holo="p-p"]) { --cbl-holo-relief: .85; }
+:where([data-cbl-holo="lr-p"]) { --cbl-holo-active: 1; --cbl-holo-relief: .95; }
+[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field {
+  background-color: hsl(0,0%,50%); background-image: var(--cbl-holo-mirror);
+  mix-blend-mode: hard-light;
+}
+/* The embossed relief, lit from the top left when the light is on the left and from the top
+   right when it is on the right, so its bumps turn as the card turns. It needs the texture
+   mask, which keeps it off the plain mirror areas. */
+[data-cbl-holo-mask="ready"][data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::before,
+[data-cbl-holo-mask="ready"][data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::after {
+  background-image: var(--cbl-holo-tex-emboss, none); background-size: calc(256px * var(--cbl-holo-k)) calc(256px * var(--cbl-holo-k));
+  background-position: calc(var(--cbl-holo-fx) * -6px * var(--cbl-holo-k)) calc(var(--cbl-holo-fy) * -5px * var(--cbl-holo-k));
+  /* Soft light: overlay would push the rainbow edge into bright coloured specks. */
+  mix-blend-mode: soft-light;
+  -webkit-mask-image: var(--cbl-holo-mask-texture); mask-image: var(--cbl-holo-mask-texture);
+  -webkit-mask-size: var(--cbl-holo-mask-size); mask-size: var(--cbl-holo-mask-size);
+  -webkit-mask-position: var(--cbl-holo-mask-position); mask-position: var(--cbl-holo-mask-position);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
+[data-cbl-holo-mask="ready"][data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::before { opacity: calc(var(--cbl-holo-relief) * (1 - var(--cbl-holo-fx))); }
+[data-cbl-holo-mask="ready"][data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-field::after { background-image: var(--cbl-holo-tex-emboss-2, none); opacity: calc(var(--cbl-holo-relief) * var(--cbl-holo-fx)); }
+/* The frame and text: plain polished silver, no glints. */
+[data-cbl-holo-mask="ready"][data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-line {
+  --cbl-holo-near: .95; --cbl-holo-far: .6;
+}
+[data-cbl-holo-mask="ready"][data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-line::after { content: none; }
+/* The gloss shows only near the light angle and never greys the ink. */
+[data-cbl-holo$="-p"] > .cbl-holo > .cbl-holo-glare {
+  background-image: radial-gradient(ellipse 55% 45% at var(--cbl-holo-x) var(--cbl-holo-y), hsla(0,0%,100%,.38) 0%, hsla(0,0%,100%,.1) 40%, hsla(0,0%,100%,0) 70%);
+  opacity: calc(var(--cbl-holo-gloss) * max(var(--cbl-holo-o), var(--cbl-holo-sweep-o) * .6) * var(--cbl-holo-arrive) * var(--cbl-holo-light, 1));
 }
 
 /* ---------- ++ special parallels: mosaic holo and rainbow gold lines ---------- */
