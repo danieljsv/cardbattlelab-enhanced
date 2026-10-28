@@ -184,7 +184,11 @@
   function prepareHandCard(cardEl, info, glow) {
     const code = cardEl.getAttribute('data-cc');
     const card = printedCard(code) || liveCard('p1', cardEl.getAttribute('data-instance-id'), code);
-    setClass(cardEl, 'cbl-glow', glow && Boolean(card));
+    const glowing = glow && Boolean(card);
+    // The site builds a new hand at some phase changes. A new card must be dim at once,
+    // because a soft fade from bright makes the whole hand flash.
+    if (glowing && !cardEl.classList.contains('cbl-glow')) { setClass(cardEl, 'cbl-glow-new', true); newGlows.push(cardEl); }
+    setClass(cardEl, 'cbl-glow', glowing);
     if (!card || !info) { dropHandCard(cardEl); return null; }
     const width = cardEl.offsetWidth;
     if (!width) return null;
@@ -240,7 +244,18 @@
     }
   }
 
+  // Cards that got cbl-glow in this update. The browser reads their faded art once, and
+  // after that a card that stops being playable fades softly again.
+  const newGlows = [];
+  function settleGlows() {
+    for (const el of newGlows) { const art = el.querySelector(':scope > img.card-art'); if (art) void getComputedStyle(art).filter; }
+    for (const el of newGlows.splice(0)) setClass(el, 'cbl-glow-new', false);
+  }
+
   function updateHand() {
+    try { prepareHand(); } finally { settleGlows(); }
+  }
+  function prepareHand() {
     const info = on('handInfo'), glow = on('playableGlow');
     for (const row of document.querySelectorAll(HAND)) {
       const cards = [...row.children].filter(c => c.classList.contains('card') && c.hasAttribute('data-cc') && !c.classList.contains('card-hidden'));
