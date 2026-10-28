@@ -529,3 +529,28 @@ test('a card rebuilt mid-sweep (a Pilot pairing) keeps its sweep on the new elem
   assert.equal(m.adopt('stack-unit', 'stack-unit'), false);
   assert.equal(m.step(now + 16), false);
 });
+
+test('the site can read the 3D rotate of a turning card', () => {
+  assert.equal(H.matrixText('rotate(-0.64564 0.76364 -0.00063 0.147deg)'), 'rotate3d(-0.64564, 0.76364, -0.00063, 0.147deg)');
+  assert.equal(H.matrixText('rotate(0 0 1 1e-5deg)'), 'rotate3d(0, 0, 1, 1e-5deg)');
+  assert.equal(H.matrixText('rotate(x 10deg)'), 'rotateX(10deg)');
+  assert.equal(H.matrixText('rotate(Y -0.5turn)'), 'rotateY(-0.5turn)');
+  // 2D text, other functions and no text stay as they are.
+  for (const text of ['rotate(180deg)', 'rotate(none)', 'matrix(1, 0, 0, 1, 0, 0)', '', undefined, [1, 0, 0, 1, 0, 0]])
+    assert.equal(H.matrixText(text), null);
+
+  // A stand-in for DOMMatrix that, as the browser's, rejects rotate() with an axis.
+  class Strict {
+    constructor(init = '') {
+      if (typeof init === 'string' && /rotate\([^)]*\s[^)]*\)/.test(init)) throw new SyntaxError(`Failed to parse '${init}'`);
+      this.init = init;
+    }
+  }
+  const Reader = H.matrixReader(Strict);
+  assert.equal(new Reader('rotate(0.6 0.8 0 10deg)').init, 'rotate3d(0.6, 0.8, 0, 10deg)');
+  assert.equal(new Reader('rotate(12deg)').init, 'rotate(12deg)');
+  assert.ok(new Reader('rotate(12deg)') instanceof Reader && new Reader() instanceof Strict);
+  assert.throws(() => new Reader('rotate(1 2 deg)'), SyntaxError);
+  class Sub extends Reader {}
+  assert.ok(new Sub('rotate(x 1deg)') instanceof Sub);
+});
