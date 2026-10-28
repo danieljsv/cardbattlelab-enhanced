@@ -52,7 +52,13 @@ view also shows a "Printed abilities" list with the keywords that the card has o
 Each card shows the foil finish of its rarity. The card tilts when you move the pointer on it,
 or when you push and move a finger on it.
 
-![Aile Strike Gundam with its foil, tilted by the pointer](docs/images/foil.gif)
+| R | LR | C+ |
+| --- | --- | --- |
+| <img src="docs/images/foil-r.gif" alt="Silver Bullet, R print, as it turns" width="200"> | <img src="docs/images/foil-lr.gif" alt="Victory Gundam, LR print, as it turns" width="200"> | <img src="docs/images/foil-c-p.gif" alt="Gundam (MA Form), C+ print, as it turns" width="200"> |
+
+| U+ | R+ | LR+ |
+| --- | --- | --- |
+| <img src="docs/images/foil-u-p.gif" alt="Banagher Links, U+ print, as it turns" width="200"> | <img src="docs/images/foil-r-p.gif" alt="Nu Gundam, R+ print, as it turns" width="200"> | <img src="docs/images/foil-lr-p.gif" alt="Gundam, LR+ print, as it turns" width="200"> |
 
 ### On the phone
 

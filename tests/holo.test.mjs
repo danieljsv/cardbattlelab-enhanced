@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import test from 'node:test';
+import {crc32, deflateSync, inflateSync} from 'node:zlib';
 
 const H = createRequire(import.meta.url)('../extension/overlay/holo.js');
 
@@ -87,12 +88,117 @@ test('masks follow the printed inks', () => {
   assert.ok(at(parallel.line, 0.97, 0.3) > 0.95, 'right edge');
   assert.equal(at(parallel.line, ...white), 0, 'white art outside the frame');
   assert.equal(at(parallel.line, ...dark), 0);
-  assert.ok(at(parallel.field, ...white) > 0.95 && at(parallel.field, ...dark) < 0.15);
+  assert.ok(at(parallel.field, ...white) > 0.95 && at(parallel.field, ...dark) < 0.01);
+  // Ink over a mirror: pale but coloured ink gets no foil; white effect text is silver.
+  assert.equal(at(parallel.field, ...gold), 0, 'coloured ink keeps its colour');
+  const text = new Uint8ClampedArray(data);
+  for (let y = 205; y < 215; y++) for (let x = 90; x < 110; x++) text.set([250, 250, 250, 255], (y * W + x) * 4);
+  assert.ok(at(H.maskValues(text, W, HEIGHT, 'parallel').line, 0.5, 0.75) > 0.95, 'white effect text');
   // R/LR/P: light areas only, no line mask.
   const holo = H.maskValues(data, W, HEIGHT, 'holo');
   assert.equal(holo.line, null);
   assert.ok(at(holo.field, ...white) > 0.95);
   assert.ok(at(holo.field, ...dark) < 0.01);
+});
+
+test('R and LR prints get their own masks', () => {
+  assert.deepEqual(['r', 'lr', 'p', 'r-p', 'lr-pp', 'c'].map(H.maskKind), ['rare', 'legend', 'holo', 'parallel', 'special', 'gloss']);
+  const data = synthetic(), white = [0.75, 0.3], dark = [0.5, 0.75];
+  // R: the foil is under the whole face and shows most on dark blue ink. Black ink only turns
+  // slate, the black frame boxes less; red ink mostly keeps its colour. The frame is a mirror.
+  const rare = H.maskValues(data, W, HEIGHT, 'rare');
+  assert.ok(at(rare.line, 0.5, 0.95) > 0.95, 'black bottom bar');
+  // White and pale grey ink on the frame gets no glow, so pale grey numbers on a white cost box
+  // stay readable.
+  assert.equal(at(rare.line, 0.75, 0.03), 0, 'white ID tab');
+  assert.equal(at(rare.line, ...white), 0, 'art');
+  assert.equal(at(rare.line, 0.5, 0.6), 0, 'name band');
+  assert.ok(at(rare.field, 0.5, 0.55) > 0.35 && at(rare.field, 0.5, 0.55) < 0.5, 'black ink in the art');
+  assert.ok(at(rare.field, 0.5, 0.95) < 0.2 && at(rare.field, ...dark) < 0.2, 'black frame box and text box');
+  assert.ok(at(rare.field, ...white) > 0.25 && at(rare.field, ...white) < 0.4, 'white ink');
+  const ink = new Uint8ClampedArray(data);
+  for (let y = 150; y < 200; y++) for (let x = 40; x < 80; x++) ink.set([220, 60, 30, 255], (y * W + x) * 4);
+  for (let y = 150; y < 200; y++) for (let x = 120; x < 160; x++) ink.set([57, 60, 90, 255], (y * W + x) * 4);
+  const inked = H.maskValues(ink, W, HEIGHT, 'rare').field;
+  assert.ok(inked[170 * W + 60] > 0.2 && inked[170 * W + 60] < 0.35, 'red ink lights up only a little');
+  assert.ok(inked[170 * W + 140] > 0.95, 'dark blue ink');
+  // LR: a sheen on the art, weaker on dark ink; none on the frame. The whole frame is a
+  // mirror, and there is no rainbow mask.
+  const legend = H.maskValues(data, W, HEIGHT, 'legend');
+  assert.ok(at(legend.field, ...white) > 0.95 && at(legend.field, ...dark) > 0.4 && at(legend.field, ...dark) < 0.6);
+  assert.equal(at(legend.field, 0.75, 0.03), 0, 'ID tab');
+  assert.ok(at(legend.line, 0.5, 0.95) > 0.95, 'bottom bar');
+  assert.equal(at(legend.line, ...white), 0, 'art');
+  const blue = new Uint8ClampedArray(data);
+  for (let y = 0; y < HEIGHT; y++) for (let x = 0; x < 10; x++) blue.set([20, 140, 220, 255], (y * W + x) * 4);
+  const edge = H.maskValues(blue, W, HEIGHT, 'legend');
+  assert.ok(edge.field[100 * W + 5] === 0 && edge.line[100 * W + 5] > 0.95, 'coloured frame is a mirror');
+  const out = H.masks(data, W, HEIGHT, 'legend');
+  assert.deepEqual([out.line.width, out.texture], [200, null]);
+  assert.equal(H.masks(data, W, HEIGHT, 'rare').texture, null);
+});
+
+test('R and LR masks keep the foil off the round corners and the hue shift on the art', () => {
+  const data = synthetic();
+  // A transparent corner, as on the scans: its colour is random and must not count.
+  for (let y = 0; y < 6; y++) for (let x = 0; x < 6; x++) data.set([254, 0, 0, 0], (y * W + x) * 4);
+  const rare = H.maskValues(data, W, HEIGHT, 'rare');
+  assert.equal(rare.field[0], 0, 'field');
+  assert.equal(rare.line[W + 1], 0, 'frame');
+  const tint = H.tintImage(data, W, HEIGHT);
+  assert.equal(tint.alpha[0], 0, 'no colour from the corner');
+  const out = H.masks(data, W, HEIGHT, 'rare'), half = (m, fx, fy) => m.alpha[Math.floor(fy * m.height) * m.width + Math.floor(fx * m.width)];
+  assert.equal(half(out.shape, 0, 0), 0, 'shape: corner');
+  assert.equal(half(out.shape, 0.5, 0.5), 255, 'shape: face');
+  // Only the art shifts in hue; the cost box, the type tab, the ID tab and the text keep their colour.
+  for (const [fx, fy, name] of [[0.1, 0.08, 'cost box'], [0.03, 0.4, 'type tab'], [0.75, 0.02, 'ID tab'], [0.5, 0.8, 'text']]) {
+    assert.equal(half(out.art, fx, fy), 0, name);
+    assert.equal(half(out.frame, fx, fy), 255, name);
+  }
+  assert.equal(half(out.art, 0.5, 0.3), 255, 'art');
+  assert.equal(half(out.frame, 0.5, 0.3), 0, 'art');
+  // The rim is the thin edge of the card.
+  assert.ok(half(out.rim, 0.5, 0.005) > 200 && half(out.rim, 0.99, 0.5) > 200, 'edge');
+  assert.equal(half(out.rim, 0.5, 0.3), 0, 'inside');
+  assert.equal(H.masks(data, W, HEIGHT, 'parallel').art, null);
+});
+
+test('white tags on the frame keep their print on any card', () => {
+  // A dark frame with a white box in the bottom right and grey numbers in the box, as the AP and
+  // HP boxes of an alt-art.
+  const data = new Uint8ClampedArray(W * HEIGHT * 4);
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < W; x++) {
+      const box = x > 150 && x < 190 && y > 245 && y < 275, digit = box && x > 165 && x < 170 && y > 252 && y < 268;
+      data.set([...(digit ? [120, 118, 120] : box ? [250, 242, 248] : [30, 30, 60]), 255], (y * W + x) * 4);
+    }
+  }
+  const tags = H.whiteTags(data, W, HEIGHT);
+  assert.ok(tags[260 * W + 168] > 0.95, 'grey number in the white box');
+  assert.equal(tags[100 * W + 100], 0, 'dark ink');
+  for (const kind of ['rare', 'legend']) {
+    const {line} = H.maskValues(data, W, HEIGHT, kind);
+    assert.ok(line[260 * W + 168] < 0.05 && line[250 * W + 155] < 0.05, `${kind}: no glow in the white box`);
+    assert.ok(line[260 * W + 5] > 0.95, `${kind}: the dark frame glows`);
+  }
+});
+
+test('the tint image keeps clear ink colours and gives neutral ink a neutral grey', () => {
+  const W2 = 4, H2 = 2, px = new Uint8ClampedArray(W2 * H2 * 4);
+  // Left 2 x 2 block dark blue ink, right block near-black ink with a little scan noise.
+  for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) px.set(x < 2 ? [20, 40, 90, 255] : [12 + x, 10, 14 - x, 255], (y * W2 + x) * 4);
+  const tint = H.tintImage(px, W2, H2);
+  assert.deepEqual([tint.width, tint.height], [2, 1]);
+  const [r, g, b] = tint.rgba.slice(0, 3);
+  assert.ok(b === 255 && r < 70 && g > r && g < b, `dark blue ink stays blue: ${[r, g, b]}`);
+  // A black box goes steel at the light, never the card's colour.
+  assert.deepEqual([...tint.rgba.slice(4, 7)], [128, 128, 128], 'near-black ink gets neutral grey');
+  assert.deepEqual([...tint.alpha], [255, 0], 'the ink weight: coloured ink only');
+  assert.deepEqual([...tint.glow], [255, 0], 'dark blue ink glows at the light, black ink does not');
+  const pale = H.tintImage(new Uint8ClampedArray([235, 225, 200, 255]), 1, 1);
+  assert.ok(pale.alpha[0] === 255 && pale.glow[0] < 140, `pale ink glows less, so it never turns white: ${pale.glow[0]}`);
+  assert.ok(H.masks(px, W2, H2, 'rare').tint && H.masks(px, W2, H2, 'legend').tint);
+  assert.equal(H.masks(px, W2, H2, 'parallel').tint, null);
 });
 
 test('mask images: half-resolution field, full-resolution line, thin lines survive', () => {
@@ -104,6 +210,62 @@ test('mask images: half-resolution field, full-resolution line, thin lines survi
   for (let y = 0; y < 4; y++) values[y * 10 + 5] = 1;
   assert.deepEqual([...H.shrink(values, 10, 4, 0.5).alpha.slice(0, 5)], [0, 0, 255, 0, 0]);
   assert.deepEqual([...H.shrink(values, 10, 4, 1, 1).alpha.slice(0, 10)], [0, 0, 0, 0, 255, 255, 255, 0, 0, 0]);
+});
+
+test('masks of a print do not depend on the prints of other sizes made before', () => {
+  const small = synthetic(), first = H.masks(small, W, HEIGHT, 'rare');
+  const big = new Uint8ClampedArray(W * 2 * HEIGHT * 2 * 4).fill(200);
+  H.masks(big, W * 2, HEIGHT * 2, 'legend');
+  const again = H.masks(small, W, HEIGHT, 'rare');
+  for (const name of ['shape', 'art', 'frame', 'rim']) assert.deepEqual(again[name], first[name], name);
+});
+
+// Reads a PNG file: checks each chunk's CRC and gives the header, the palette alpha and the rows.
+function readPng(file) {
+  const bytes = Buffer.from(file), chunks = {}, data = [];
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  for (let at = 8; at < bytes.length;) {
+    const length = bytes.readUInt32BE(at), name = bytes.toString('ascii', at + 4, at + 8);
+    assert.equal(bytes.readUInt32BE(at + 8 + length), crc32(bytes.subarray(at + 4, at + 8 + length)), `${name} CRC`);
+    if (name === 'IDAT') data.push(bytes.subarray(at + 8, at + 8 + length));
+    else chunks[name] = bytes.subarray(at + 8, at + 8 + length);
+    at += 12 + length;
+  }
+  return {header: chunks.IHDR, alpha: chunks.tRNS, rows: inflateSync(Buffer.concat(data)), end: 'IEND' in chunks};
+}
+
+test('mask files keep each pixel as it is', () => {
+  for (const [width, height, channels] of [[300, 419, 1], [600, 838, 4], [1, 1, 1], [7, 3, 4]]) {
+    const pixels = new Uint8ClampedArray(width * height * channels).map((_, i) => (i * 2654435761 >>> 13) & 255);
+    const rows = H.pngRows(width, height, pixels, channels), line = width * channels;
+    // Stored rows, and rows compressed as the browser's CompressionStream does.
+    for (const file of [H.png(width, height, channels, rows), H.png(width, height, channels, rows, deflateSync(rows))]) {
+      const png = readPng(file);
+      assert.ok(png.end);
+      assert.deepEqual([png.header.readUInt32BE(0), png.header.readUInt32BE(4), png.header[8], png.header[9]],
+        [width, height, 8, channels === 1 ? 3 : 6]);
+      // Alpha masks: a palette of black, where entry i has alpha i.
+      if (channels === 1) assert.deepEqual([...png.alpha], Array.from({length: 256}, (_, i) => i));
+      assert.equal(png.rows.length, height * (line + 1));
+      for (let y = 0; y < height; y++) {
+        assert.equal(png.rows[y * (line + 1)], 0);
+        assert.ok(png.rows.subarray(y * (line + 1) + 1, (y + 1) * (line + 1)).equals(Buffer.from(pixels.buffer, y * line, line)), `row ${y}`);
+      }
+    }
+  }
+});
+
+test('the surface texture of + prints stays on the art, off the frame, corners and text', () => {
+  assert.equal(H.masks(synthetic(), W, HEIGHT, 'special').texture, null);
+  const tex = H.masks(synthetic(), W, HEIGHT, 'parallel').texture;
+  assert.deepEqual([tex.width, tex.height], [50, 70]);
+  const at = (fx, fy) => tex.alpha[Math.floor(fy * tex.height) * tex.width + Math.floor(fx * tex.width)];
+  // The art keeps its relief.
+  for (const [fx, fy] of [[0.5, 0.3], [0.3, 0.45], [0.8, 0.2]]) assert.equal(at(fx, fy), 255, `${fx},${fy}`);
+  // Cost box, ID tab, edges, name plate, effect text and the bottom tabs are plain mirror.
+  for (const [fx, fy] of [[0.1, 0.08], [0.23, 0.17], [0.8, 0.03], [0.03, 0.4], [0.97, 0.4], [0.5, 0.62], [0.5, 0.75], [0.15, 0.9]]) {
+    assert.equal(at(fx, fy), 0, `${fx},${fy}`);
+  }
 });
 
 test('masks crop like the face does', () => {
@@ -235,13 +397,20 @@ test('cards arriving together cascade 75 ms apart, at most 8 steps', () => {
   assert.equal(starts[9], 600);
 });
 
-test('hovering or pressing before the masks cancels the sweep and lights the card', () => {
+test('hovering or pressing before the masks cancels the sweep, then fades the finish in with them', () => {
   const m = H.createMotion();
   m.arrive('card', 0, 0, H.REST);
   m.aim('card', 70, 40, 11);
+  // No finish without its masks while it is hovered.
+  run(m, 0, 2000);
+  assert.equal(m.values('card').arrive, 0);
+  m.ready('card', 2000);
+  m.fade('card', 2000);
+  m.step(2000 + H.FADE_MS / 2);
+  const half = m.values('card').arrive;
+  assert.ok(half > 0.3 && half < 0.9, `half way: ${half}`);
+  const now = run(m, 2000 + H.FADE_MS / 2, 300);
   assert.equal(m.values('card').arrive, 1);
-  m.ready('card', 50);
-  const now = run(m, 50, 300);
   assert.equal(m.values('card').sweeping, false);
   assert.ok(m.values('card').o > 0.9 && m.values('card').tilt);
   // Release: back flat at the resting lamp on the softer spring.
@@ -282,6 +451,45 @@ test('the site\'s animation speed scales the sweep and cascade', () => {
   }
   assert.equal(start, 38); // 75 ms × 0.5, rounded up to the next millisecond step
   assert.equal(end - start, 1000);
+});
+
+test('a new face that waits for its masks stays plain, then fades its finish in', () => {
+  const m = H.createMotion();
+  m.hide('card', H.REST);
+  assert.equal(m.values('card').arrive, 0, 'hidden while it waits');
+  // A hover or press while it waits does not show a finish without its masks.
+  m.aim('card', 70, 40, 11);
+  run(m, 0, 500);
+  assert.equal(m.values('card').arrive, 0);
+  m.fade('card', 500);
+  m.step(500 + H.FADE_MS / 2);
+  const half = m.values('card').arrive;
+  assert.ok(half > 0.3 && half < 0.9, `half way: ${half}`);
+  m.step(500 + H.FADE_MS);
+  assert.equal(m.values('card').arrive, 1);
+  assert.equal(m.step(500 + H.FADE_MS + 16) && m.values('card').sweeping, false, 'no sweep');
+  // A face that did not wait (masks ready at once) never fades.
+  m.fade('card', 2000);
+  m.step(2016);
+  assert.equal(m.values('card').arrive, 1);
+});
+
+test('the fade leaves an arrival to its sweep, and is instant without motion', () => {
+  const m = H.createMotion();
+  m.arrive('card', 0, 0, H.REST);
+  m.hide('card', H.REST);
+  m.ready('card', 0);
+  m.fade('card', 0);
+  run(m, 0, 100);
+  assert.ok(m.values('card').sweeping, 'the sweep runs');
+  const reduced = H.createMotion({reduced: () => true});
+  reduced.hide('card', H.REST);
+  reduced.fade('card', 0);
+  assert.equal(reduced.values('card').arrive, 1);
+  const instant = H.createMotion({ratio: () => 0});
+  instant.hide('card', H.REST);
+  instant.fade('card', 0);
+  assert.equal(instant.values('card').arrive, 1);
 });
 
 test('a lifted hand card is lit at 55 % where it is; cleared cards drop their state', () => {
