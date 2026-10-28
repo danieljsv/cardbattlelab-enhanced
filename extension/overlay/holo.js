@@ -438,6 +438,30 @@
     return `${axis} ${(2 * Math.atan2(s, q[0]) * 180 / Math.PI).toFixed(3)}deg`;
   }
 
+  // The site reads a card's place on screen with new DOMMatrix('rotate(' + its rotate + ')'),
+  // and that text takes a 2D angle only. This writes a 3D rotate (a turning card's) as the
+  // same turn in a form DOMMatrix reads, or gives null when the text has no such rotate.
+  const NUMBER = '[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[-+]?\\d+)?';
+  const AXIS_ROTATE = new RegExp(`rotate\\(\\s*(${NUMBER})\\s+(${NUMBER})\\s+(${NUMBER})\\s+(${NUMBER}(?:deg|rad|grad|turn))\\s*\\)`, 'gi');
+  const NAMED_ROTATE = new RegExp(`rotate\\(\\s*([xyz])\\s+(${NUMBER}(?:deg|rad|grad|turn))\\s*\\)`, 'gi');
+  function matrixText(text) {
+    if (typeof text !== 'string') return null;
+    const fixed = text.replace(AXIS_ROTATE, 'rotate3d($1, $2, $3, $4)')
+      .replace(NAMED_ROTATE, (_, axis, angle) => `rotate${axis.toUpperCase()}(${angle})`);
+    return fixed === text ? null : fixed;
+  }
+  // A stand-in for the DOMMatrix constructor `native`: it reads text the same way, and reads
+  // text that throws only because of a 3D rotate as the same turn.
+  function matrixReader(native) {
+    return new Proxy(native, {construct(target, args, next) {
+      try { return Reflect.construct(target, args, next); } catch (error) {
+        const text = matrixText(args[0]);
+        if (text === null) throw error;
+        return Reflect.construct(target, [text, ...args.slice(1)], next);
+      }
+    }});
+  }
+
   // The card tilts toward the pointer while the lamp's reflection moves the other way
   // across it, as on a real card, instead of a spot under the pointer.
   function aimAt(px, py, limit) {
@@ -627,7 +651,7 @@
 
   const api = {FINISHES, PRINTED, REST, SWEEP_MS, CASCADE_MS, MAX_CASCADE, MASK_WAIT, FADE_MS, printOf, baseCode, normalize,
     rarityOf, finish, family, foil, maskKind, smooth, frameArea, plainArea, artArea, whiteTags, hueOf, maskValues, shrink, textureMask, tintImage, masks, maskFit, pngRows, png, random, lamp,
-    localPoint, frameOf, rotation, turn, aimAt, ease, envelope, orbit, createMotion, createArrivals};
+    localPoint, frameOf, rotation, turn, matrixText, matrixReader, aimAt, ease, envelope, orbit, createMotion, createArrivals};
   root.CBLHolo = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

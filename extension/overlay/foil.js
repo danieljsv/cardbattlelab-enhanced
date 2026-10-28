@@ -47,6 +47,28 @@
     const arrivals = H.createArrivals();
     const now = () => win.performance.now();
 
+    // ---- The site's reading of turning cards ------------------------------------------------
+
+    // The site measures hand cards and Units with new DOMMatrix('rotate(' + rotate + ')'). That
+    // throws on the 3D rotate of a turning card, so a click on a tilted hand card locked the match.
+    // While the foil is on, DOMMatrix reads such a rotate as the same turn. Other text is unchanged.
+    const natives = new Map(), readers = new Map();
+    function readTurns(on) {
+      for (const name of ['DOMMatrix', 'DOMMatrixReadOnly']) {
+        if (on && !natives.has(name) && typeof win[name] === 'function') {
+          const reader = H.matrixReader(win[name]);
+          natives.set(name, win[name]);
+          readers.set(name, reader);
+          win[name] = reader;
+        } else if (!on && natives.has(name)) {
+          // If other code replaced the constructor after us, keep its version.
+          if (win[name] === readers.get(name)) win[name] = natives.get(name);
+          natives.delete(name);
+          readers.delete(name);
+        }
+      }
+    }
+
     // ---- Owned stylesheet: textures and one rule per lit face -------------------------------
 
     let sheet = null, serial = 0;
@@ -950,6 +972,7 @@
     const api = {
       sync() {
         cleared = false;
+        readTurns(true);
         sync();
         // Make the textures before the first foil card needs them.
         if (win.__cardByCode) { ensureTextures(); ensureLines(); }
@@ -976,6 +999,7 @@
       // last arrived face, so the next sync() replays no sweep. Nothing lights again until it.
       clear() {
         cleared = true;
+        readTurns(false);
         for (const node of [...marked]) forget(node);
         forgetPartners();
         for (const node of motion.keys()) motion.drop(node);
